@@ -1,0 +1,9 @@
+streamlit
+pandas
+psycopg2-binary
+requests
+websocket-client
+pytz
+ta
+python-dotenv
+sqlalchemy
