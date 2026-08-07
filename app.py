@@ -47,9 +47,9 @@ with st.sidebar:
             st.warning("Please configure your credentials in the ⚙️ Settings menu first.")
         else:
             st.markdown("---")
-            st.markdown("**Method 1: Browser Redirect**")
+
             auth_url = f"https://auth.flattrade.in/?app_key={config.api_key}"
-            st.markdown(f'<a href="{auth_url}" target="_self"><button style="background-color:#4CAF50; color:white; padding:10px 20px; text-align:center; border:none; border-radius:4px; cursor:pointer; width:100%;">Connect Broker (Web)</button></a>', unsafe_allow_html=True)
+            st.markdown(f'<a href="{auth_url}" target="_self"><button style="background-color:#4CAF50; color:white; padding:10px 20px; text-align:center; border:none; border-radius:4px; cursor:pointer; width:100%;">Connect Broker</button></a>', unsafe_allow_html=True)
 
             query_params = st.query_params
             url_code = query_params.get("code", "")
@@ -67,20 +67,6 @@ with st.sidebar:
                 else:
                     st.error(f"Token Generation failed! API Error: {st.session_state.api.last_api_error}")
 
-            st.markdown("---")
-            st.markdown("**Method 2: Auto Login**")
-
-            if st.button("Connect Broker (Auto)"):
-                if not config.user_id or not config.password or not config.totp or not config.api_key or not config.api_secret:
-                    st.error("Incomplete credentials in Settings.")
-                else:
-                    full_api_key = f"{config.user_id}:::{config.api_key}"
-                    if st.session_state.api.login_direct(config.user_id, config.password, config.totp, full_api_key, config.api_secret):
-                        st.session_state.logged_in = True
-                        st.success(f"Connected successfully as {config.user_id}!")
-                        st.rerun()
-                    else:
-                        st.error(f"Auto Login failed! API Response: {st.session_state.api.last_api_error}")
     else:
         st.success("Broker Connected ✅")
 
@@ -185,13 +171,11 @@ if st.session_state.show_settings:
     config = get_user_config("Flattrade")
     with st.form("settings_form"):
         s_user_id = st.text_input("User ID", value=config.user_id if config else "FZ06795")
-        s_password = st.text_input("Password", value=config.password if config else "Sreya@123", type="password")
-        s_totp = st.text_input("TOTP (Code or Secret Key)", value=config.totp if config else "")
         s_api_key = st.text_input("API Key", value=config.api_key if config else "c1754e77127444d4912bdaadce1c3b2e")
         s_api_secret = st.text_input("API Secret", value=config.api_secret if config else "2026.404dd20858d8465a824edf9f733f68867e9b92909ed07cd4", type="password")
 
         if st.form_submit_button("Save Credentials"):
-            save_user_config("Flattrade", s_user_id, s_api_key, s_api_secret, s_password, s_totp)
+            save_user_config("Flattrade", s_user_id, s_api_key, s_api_secret)
             st.success("Credentials saved to database successfully!")
             st.session_state.show_settings = False
 
@@ -214,37 +198,38 @@ if st.session_state.running and st.session_state.strategy:
     logs_placeholder = st.empty()
     reports_placeholder = st.empty()
 
-    while st.session_state.running:
-        df = st.session_state.strategy.fetch_and_calculate()
-        if not df.empty:
-            st.session_state.strategy.evaluate_signals(df)
 
-            # Update placeholders
+    df = st.session_state.strategy.fetch_and_calculate()
+    if not df.empty:
+        st.session_state.strategy.evaluate_signals(df)
 
-            # Update placeholders with unique key to prevent DuplicateElementId error
-            chart_placeholder.plotly_chart(render_chart(df), use_container_width=True, key=f"chart_{int(time.time())}")
+        # Update placeholders
+        chart_placeholder.plotly_chart(render_chart(df), use_container_width=True, key=f"chart_{int(time.time())}")
 
-            latest_close = df.iloc[-1]['close']
-            ltp_placeholder.metric("Last Traded Price", f"₹ {latest_close:.2f}")
-            pnl_placeholder.metric("Live Running P&L", f"₹ {st.session_state.strategy.running_pnl:.2f}")
+        latest_close = df.iloc[-1]['close']
+        ltp_placeholder.metric("Last Traded Price", f"₹ {latest_close:.2f}")
+        pnl_placeholder.metric("Live Running P&L", f"₹ {st.session_state.strategy.running_pnl:.2f}")
+    else:
+        chart_placeholder.warning("Waiting for candlestick data... (API might have returned empty data)")
 
-        logs = get_trade_logs(20)
-        if logs:
-            log_data = [{"Time": l.timestamp, "Message": l.message} for l in logs]
-            logs_placeholder.dataframe(pd.DataFrame(log_data), use_container_width=True)
+    logs = get_trade_logs(20)
+    if logs:
+        log_data = [{"Time": l.timestamp, "Message": l.message} for l in logs]
+        logs_placeholder.dataframe(pd.DataFrame(log_data), use_container_width=True)
 
-        reports = get_order_reports()
-        if reports:
-            rep_df = pd.DataFrame([{
-                "Symbol": r.symbol, "ExpDate": r.exp_date, "StrikePrice": r.strike_price, "OpType": r.op_type,
-                "BuySell": r.buy_sell, "Qty": r.qty, "Price": r.price, "TradeQty": r.trade_qty,
-                "AvgPrice": r.avg_price, "TimeStamp": r.timestamp, "Points": r.points,
-                "Amount": r.amount, "Running P&L": r.running_pnl, "Gain %": r.gain_percent,
-                "Invested Amount": r.invested_amount
-            } for r in reports])
-            reports_placeholder.dataframe(rep_df, use_container_width=True)
+    reports = get_order_reports()
+    if reports:
+        rep_df = pd.DataFrame([{
+            "Symbol": r.symbol, "ExpDate": r.exp_date, "StrikePrice": r.strike_price, "OpType": r.op_type,
+            "BuySell": r.buy_sell, "Qty": r.qty, "Price": r.price, "TradeQty": r.trade_qty,
+            "AvgPrice": r.avg_price, "TimeStamp": r.timestamp, "Points": r.points,
+            "Amount": r.amount, "Running P&L": r.running_pnl, "Gain %": r.gain_percent,
+            "Invested Amount": r.invested_amount
+        } for r in reports])
+        reports_placeholder.dataframe(rep_df, use_container_width=True)
 
-        time.sleep(5)
+    time.sleep(5)
+    st.rerun()
 else:
     # Just render static placeholders if not running
     chart_placeholder = st.empty()
