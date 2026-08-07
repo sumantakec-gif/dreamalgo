@@ -30,20 +30,17 @@ if 'api' not in st.session_state or getattr(st.session_state.api, 'log', None) i
 
 
 
+
 # Sidebar
 with st.sidebar:
     st.header("Authentication")
 
-    user_id = st.text_input("User ID", value="FZ06795")
-    api_key_only = st.text_input("API Key", value="c1754e77127444d4912bdaadce1c3b2e")
+    api_key = st.text_input("API Key", value="c1754e77127444d4912bdaadce1c3b2e")
     api_secret = st.text_input("API Secret", value="2026.404dd20858d8465a824edf9f733f68867e9b92909ed07cd4", type="password")
-
-    # Flattrade technically expects ClientID:::API_KEY for its app_key parameters
-    full_api_key = f"{user_id}:::{api_key_only}"
 
     st.markdown("---")
     st.markdown("**Method 1: Manual Auth (Browser Redirect)**")
-    auth_url = f"https://auth.flattrade.in/?app_key={api_key_only}"
+    auth_url = f"https://auth.flattrade.in/?app_key={api_key}"
     st.markdown(f"[Click Here to Login to Flattrade]({auth_url})")
 
     query_params = st.query_params
@@ -51,10 +48,10 @@ with st.sidebar:
     auth_code = st.text_input("Auth Code (Auto-filled)", value=url_code)
 
     if st.button("Generate Token & Login") or (url_code and not st.session_state.logged_in):
-        if not api_key_only or not api_secret or not auth_code:
+        if not api_key or not api_secret or not auth_code:
             st.error("API Key, Secret, and Auth Code are required.")
         else:
-            uid, token = st.session_state.api.generate_session_token(api_key_only, api_secret, auth_code)
+            uid, token = st.session_state.api.generate_session_token(api_key, api_secret, auth_code)
             if uid and token:
                 if st.session_state.api.login(uid, token):
                     st.session_state.logged_in = True
@@ -64,6 +61,7 @@ with st.sidebar:
                     st.error(f"Login validation failed! API Error: {st.session_state.api.last_api_error}")
             else:
                 st.error(f"Token Generation failed! API Error: {st.session_state.api.last_api_error}")
+
 
 
                 st.warning(f"API Flow Trace: {st.session_state.api.last_debug_info}")
