@@ -4,7 +4,7 @@ import time
 import plotly.graph_objects as go
 from src.trading.api import FlattradeClient
 from src.trading.strategy import StrategyController
-from src.database.crud import get_trade_logs, get_order_reports
+from src.database.crud import get_trade_logs, get_order_reports, save_user_config, get_user_config
 from io import BytesIO
 
 st.set_page_config(layout="wide", page_title="Flattrade Option Algo")
@@ -17,6 +17,9 @@ def add_sys_log(msg):
     # Keep last 50 logs
     if len(st.session_state.system_logs) > 50:
         st.session_state.system_logs.pop(0)
+
+if 'show_settings' not in st.session_state:
+    st.session_state.show_settings = False
 
 if 'api' not in st.session_state or getattr(st.session_state.api, 'log', None) is None:
     st.session_state.api = FlattradeClient(log_callback=add_sys_log)
@@ -31,43 +34,58 @@ if 'api' not in st.session_state or getattr(st.session_state.api, 'log', None) i
 
 
 
+
 # Sidebar
 with st.sidebar:
-    st.header("Authentication")
+    st.header("Broker Connection")
+    broker = st.selectbox("Select Broker", ["Flattrade"])
 
-    api_key = st.text_input("API Key", value="c1754e77127444d4912bdaadce1c3b2e")
-    api_secret = st.text_input("API Secret", value="2026.404dd20858d8465a824edf9f733f68867e9b92909ed07cd4", type="password")
+    config = get_user_config(broker)
 
-    st.markdown("---")
-    st.markdown("**Method 1: Manual Auth (Browser Redirect)**")
-    auth_url = f"https://auth.flattrade.in/?app_key={api_key}"
-    st.markdown(f'<a href="{auth_url}" target="_self"><button style="background-color:#4CAF50; color:white; padding:10px 20px; text-align:center; border:none; border-radius:4px; cursor:pointer; width:100%;">Click Here to Login to Flattrade</button></a>', unsafe_allow_html=True)
-
-    query_params = st.query_params
-    url_code = query_params.get("code", "")
-
-    # Automatically attempt login if we have a code and aren't logged in
-    if url_code and not st.session_state.logged_in:
-        if not api_key or not api_secret:
-            st.error("API Key and Secret are required to process the redirect.")
+    if not st.session_state.logged_in:
+        if not config:
+            st.warning("Please configure your credentials in the ⚙️ Settings menu first.")
         else:
-            uid, token = st.session_state.api.generate_session_token(api_key, api_secret, url_code)
-            if uid and token:
-                if st.session_state.api.login(uid, token):
-                    st.session_state.logged_in = True
-                    st.success(f"Logged in successfully as {uid}!")
-                    st.query_params.clear()
+            st.markdown("---")
+            st.markdown("**Method 1: Browser Redirect**")
+            auth_url = f"https://auth.flattrade.in/?app_key={config.api_key}"
+            st.markdown(f'<a href="{auth_url}" target="_self"><button style="background-color:#4CAF50; color:white; padding:10px 20px; text-align:center; border:none; border-radius:4px; cursor:pointer; width:100%;">Connect Broker (Web)</button></a>', unsafe_allow_html=True)
+
+            query_params = st.query_params
+            url_code = query_params.get("code", "")
+
+            if url_code:
+                uid, token = st.session_state.api.generate_session_token(config.api_key, config.api_secret, url_code)
+                if uid and token:
+                    if st.session_state.api.login(uid, token):
+                        st.session_state.logged_in = True
+                        st.success(f"Connected successfully as {uid}!")
+                        st.query_params.clear()
+                        st.rerun()
+                    else:
+                        st.error(f"Login validation failed! API Error: {st.session_state.api.last_api_error}")
                 else:
-                    st.error(f"Login validation failed! API Error: {st.session_state.api.last_api_error}")
-            else:
-                st.error(f"Token Generation failed! API Error: {st.session_state.api.last_api_error}")
+                    st.error(f"Token Generation failed! API Error: {st.session_state.api.last_api_error}")
 
+            st.markdown("---")
+            st.markdown("**Method 2: Auto Login**")
 
-
-                st.warning(f"API Flow Trace: {st.session_state.api.last_debug_info}")
-
+            if st.button("Connect Broker (Auto)"):
+                if not config.user_id or not config.password or not config.totp or not config.api_key or not config.api_secret:
+                    st.error("Incomplete credentials in Settings.")
+                else:
+                    full_api_key = f"{config.user_id}:::{config.api_key}"
+                    if st.session_state.api.login_direct(config.user_id, config.password, config.totp, full_api_key, config.api_secret):
+                        st.session_state.logged_in = True
+                        st.success(f"Connected successfully as {config.user_id}!")
+                        st.rerun()
+                    else:
+                        st.error(f"Auto Login failed! API Response: {st.session_state.api.last_api_error}")
+    else:
+        st.success("Broker Connected ✅")
 
     st.header("Strategy Settings")
+
     index_name = st.selectbox("Index", ["NIFTY", "SENSEX"])
     opt_type = st.selectbox("Option Type (CE/PE)", ["CE", "PE"])
     strike_selection = st.selectbox("Strike Selection", ["ATM", "OTM Range"])
@@ -155,7 +173,30 @@ if st.session_state.system_logs:
     st.code("\n".join(st.session_state.system_logs[::-1]), language="text")
 
 # Main Area
+
+# Top right Settings Button
+col_main, col_settings = st.columns([9, 1])
+with col_settings:
+    if st.button("⚙️ Settings"):
+        st.session_state.show_settings = not st.session_state.show_settings
+
+if st.session_state.show_settings:
+    st.markdown("### User Configuration")
+    config = get_user_config("Flattrade")
+    with st.form("settings_form"):
+        s_user_id = st.text_input("User ID", value=config.user_id if config else "FZ06795")
+        s_password = st.text_input("Password", value=config.password if config else "Sreya@123", type="password")
+        s_totp = st.text_input("TOTP (Code or Secret Key)", value=config.totp if config else "")
+        s_api_key = st.text_input("API Key", value=config.api_key if config else "c1754e77127444d4912bdaadce1c3b2e")
+        s_api_secret = st.text_input("API Secret", value=config.api_secret if config else "2026.404dd20858d8465a824edf9f733f68867e9b92909ed07cd4", type="password")
+
+        if st.form_submit_button("Save Credentials"):
+            save_user_config("Flattrade", s_user_id, s_api_key, s_api_secret, s_password, s_totp)
+            st.success("Credentials saved to database successfully!")
+            st.session_state.show_settings = False
+
 st.title("Flattrade Options Algo Trading")
+
 
 # We will handle the loop here instead of using st.rerun() globally if running
 if st.session_state.running and st.session_state.strategy:

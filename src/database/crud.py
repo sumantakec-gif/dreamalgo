@@ -1,5 +1,5 @@
 from datetime import datetime
-from src.database.models import get_session, Candlestick, TradeLog, OrderReport
+from src.database.models import get_session, Candlestick, TradeLog, OrderReport, UserConfig
 
 def insert_candlestick(symbol: str, token: str, timestamp: datetime, open_price: float, high: float, low: float, close: float, volume: int, vwap: float):
     session = get_session()
@@ -79,9 +79,36 @@ def get_trade_logs(limit=100):
     finally:
         session.close()
 
+
 def get_order_reports():
     session = get_session()
     try:
         return session.query(OrderReport).order_by(OrderReport.timestamp.desc()).all()
+    finally:
+        session.close()
+
+def save_user_config(broker, user_id, api_key, api_secret, password="", totp=""):
+    session = get_session()
+    try:
+        config = session.query(UserConfig).filter_by(broker=broker).first()
+        if not config:
+            config = UserConfig(broker=broker)
+            session.add(config)
+        config.user_id = user_id
+        config.api_key = api_key
+        config.api_secret = api_secret
+        config.password = password
+        config.totp = totp
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
+
+def get_user_config(broker):
+    session = get_session()
+    try:
+        return session.query(UserConfig).filter_by(broker=broker).first()
     finally:
         session.close()

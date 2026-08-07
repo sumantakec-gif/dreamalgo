@@ -40,6 +40,7 @@ class TradeLog(Base):
     message = Column(String)
     is_paper_trade = Column(Boolean)
 
+
 class OrderReport(Base):
     __tablename__ = 'order_reports'
     id = Column(Integer, primary_key=True)
@@ -58,6 +59,16 @@ class OrderReport(Base):
     running_pnl = Column(Float)
     gain_percent = Column(Float)
     invested_amount = Column(Float)
+
+class UserConfig(Base):
+    __tablename__ = 'user_configs'
+    id = Column(Integer, primary_key=True)
+    broker = Column(String, unique=True)
+    user_id = Column(String)
+    api_key = Column(String)
+    api_secret = Column(String)
+    password = Column(String)
+    totp = Column(String)
 
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
