@@ -41,15 +41,24 @@ class FlattradeClient:
         self.api = NorenApiPy()
 
 
+
     def login(self, user_id, token):
         try:
-            ret = self.api.set_session(userid=user_id, password='', usertoken=token)
-            if ret:
+            # First set session locally
+            self.api.set_session(userid=user_id, password='', usertoken=token)
+            # Then verify it by making a harmless request
+            ret = self.api.get_limits()
+            if ret and ret.get('stat') == 'Ok':
                 logging.info("Login successful")
                 return True
             else:
-                logging.error("Login failed")
+                self.last_api_error = str(ret) if ret else "Empty response"
+                logging.error(f"Login failed: {self.last_api_error}")
                 return False
+        except Exception as e:
+            self.last_api_error = str(e)
+            logging.error(f"Login exception: {e}")
+            return False
         except Exception as e:
             logging.error(f"Login exception: {e}")
             return False

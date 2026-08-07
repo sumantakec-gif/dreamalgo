@@ -15,18 +15,19 @@ if 'api' not in st.session_state:
     st.session_state.strategy = None
     st.session_state.running = False
 
+
 # Sidebar
 with st.sidebar:
     st.header("Credentials")
-    uid = st.text_input("User ID")
-    token = st.text_input("API Token", type="password")
+    uid = st.text_input("User ID", value="FZ06795")
+    token = st.text_input("API Token", value="c1754e77127444d4912bdaadce1c3b2e", type="password")
 
     if st.button("Login"):
         if st.session_state.api.login(uid, token):
             st.session_state.logged_in = True
             st.success("Logged in successfully!")
         else:
-            st.error("Login failed")
+            st.error(f"Login failed! API Error: {st.session_state.api.last_api_error}")
 
 
     st.header("Strategy Settings")
