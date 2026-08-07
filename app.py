@@ -41,21 +41,20 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("**Method 1: Manual Auth (Browser Redirect)**")
     auth_url = f"https://auth.flattrade.in/?app_key={api_key}"
-    st.markdown(f"[Click Here to Login to Flattrade]({auth_url})")
+    st.markdown(f'<a href="{auth_url}" target="_self"><button style="background-color:#4CAF50; color:white; padding:10px 20px; text-align:center; border:none; border-radius:4px; cursor:pointer; width:100%;">Click Here to Login to Flattrade</button></a>', unsafe_allow_html=True)
 
     query_params = st.query_params
     url_code = query_params.get("code", "")
-    auth_code = st.text_input("Auth Code (Auto-filled)", value=url_code)
 
-    if st.button("Generate Token & Login") or (url_code and not st.session_state.logged_in):
-        if not api_key or not api_secret or not auth_code:
-            st.error("API Key, Secret, and Auth Code are required.")
+    # Automatically attempt login if we have a code and aren't logged in
+    if url_code and not st.session_state.logged_in:
+        if not api_key or not api_secret:
+            st.error("API Key and Secret are required to process the redirect.")
         else:
-            uid, token = st.session_state.api.generate_session_token(api_key, api_secret, auth_code)
+            uid, token = st.session_state.api.generate_session_token(api_key, api_secret, url_code)
             if uid and token:
                 if st.session_state.api.login(uid, token):
                     st.session_state.logged_in = True
-                    save_session_cache(uid, token)
                     st.success(f"Logged in successfully as {uid}!")
                     st.query_params.clear()
                 else:
