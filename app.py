@@ -96,6 +96,16 @@ with st.sidebar:
 
     else:
         st.success("Broker Connected ✅")
+        if st.button("Disconnect Broker"):
+            import os
+            if os.path.exists(".flattrade_session.json"):
+                os.remove(".flattrade_session.json")
+            st.session_state.api = None
+            st.session_state.logged_in = False
+            st.session_state.running = False
+            st.session_state.strategy = None
+            st.query_params.clear()
+            st.rerun()
 
     st.header("Strategy Settings")
 
@@ -199,9 +209,9 @@ if st.session_state.show_settings:
     st.markdown("### User Configuration")
     config = get_user_config("Flattrade")
     with st.form("settings_form"):
-        s_user_id = st.text_input("User ID", value=config.user_id if config else "FZ06795")
-        s_api_key = st.text_input("API Key", value=config.api_key if config else "c1754e77127444d4912bdaadce1c3b2e")
-        s_api_secret = st.text_input("API Secret", value=config.api_secret if config else "2026.404dd20858d8465a824edf9f733f68867e9b92909ed07cd4", type="password")
+        s_user_id = st.text_input("User ID", value=config.user_id if config else "")
+        s_api_key = st.text_input("API Key", value=config.api_key if config else "")
+        s_api_secret = st.text_input("API Secret", value=config.api_secret if config else "", type="password")
 
         if st.form_submit_button("Save Credentials"):
             save_user_config("Flattrade", s_user_id, s_api_key, s_api_secret)
@@ -227,8 +237,6 @@ if st.session_state.running and st.session_state.strategy:
     logs_placeholder = st.empty()
     reports_placeholder = st.empty()
 
-
-    df = st.session_state.strategy.fetch_and_calculate()
     if not df.empty:
         st.session_state.strategy.evaluate_signals(df)
 

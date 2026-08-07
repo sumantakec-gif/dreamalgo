@@ -236,9 +236,15 @@ class FlattradeClient:
     def get_intraday_data(self, exchange, token, start_time):
         try:
             self.log(f"Fetching intraday data for token={token}, start={start_time}")
-            ret = self.api.get_time_price_series(exchange=exchange, token=token, starttime=start_time, interval=1)
+            ret = self.api.get_time_price_series(exchange=exchange, token=token, starttime=str(start_time))
+            self.log(f"get_time_price_series returned: {ret}")
             if isinstance(ret, list) and len(ret) > 0 and ret[0].get('stat') == 'Ok':
                 return ret
+            elif isinstance(ret, list) and len(ret) > 0 and 'stat' not in ret[0]:
+                return ret
+            elif isinstance(ret, dict) and ret.get('stat') == 'Ok':
+                return [ret] # some NorenAPI versions return dict?
+
         except Exception as e:
             logging.error(f"Error fetching intraday data: {e}")
         return []

@@ -4,6 +4,19 @@ from src.database.models import get_session, Candlestick, TradeLog, OrderReport,
 def insert_candlestick(symbol: str, token: str, timestamp: datetime, open_price: float, high: float, low: float, close: float, volume: int, vwap: float):
     session = get_session()
     try:
+        # Check if already exists to avoid duplicates
+        existing = session.query(Candlestick).filter_by(token=token, timestamp=timestamp).first()
+        if existing:
+            # Update existing
+            existing.open_price = open_price
+            existing.high = high
+            existing.low = low
+            existing.close = close
+            existing.volume = volume
+            existing.vwap = vwap
+            session.commit()
+            return
+
         candle = Candlestick(
             symbol=symbol,
             token=token,

@@ -22,7 +22,7 @@ class StrategyController:
         self.running_pnl = 0.0
 
     def calculate_indicators(self, df: pd.DataFrame):
-        if len(df) < 250:
+        if len(df) < 1:
             return df
 
         df['ema_9'] = ta.trend.EMAIndicator(close=df['close'], window=9).ema_indicator()
@@ -38,7 +38,7 @@ class StrategyController:
     def fetch_and_calculate(self):
         # Fetch data since today's start
         today = datetime.now()
-        start_secs = int(today.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+        start_secs = str(int(today.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()))
 
         data = self.api.get_intraday_data(self.exchange, self.token, start_secs)
         if not data:
@@ -59,7 +59,9 @@ class StrategyController:
                     'volume': int(d['v']),
                     'vwap': float(d['intvwap'])
                 })
-            except Exception:
+            except Exception as e:
+                import logging
+                logging.error(f"Error parsing intraday data record: {e}, {d}")
                 continue
 
         df = pd.DataFrame(records)

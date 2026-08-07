@@ -8,3 +8,6 @@ ta
 python-dotenv
 sqlalchemy
 pyotp
+plotly==5.22.0
+NorenRestApiPy==0.0.32
+openpyxl==3.1.2
