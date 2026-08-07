@@ -65,12 +65,14 @@ class FlattradeClient:
         return None
 
 
+
     def get_nearest_expiry_option(self, index_name, opt_type, strike_price):
+        # Format strike without decimals for string searches
+        strike_int = int(float(strike_price))
         exch = 'NFO' if index_name.lower() == 'nifty' else 'BFO'
-        search_txt = f"{'NIFTY' if index_name.lower() == 'nifty' else 'SENSEX'} {strike_price} {opt_type}"
+        search_txt = f"{'NIFTY' if index_name.lower() == 'nifty' else 'SENSEX'} {strike_int} {opt_type}"
 
         try:
-            # First try get_option_chain
             underlying_tsym = 'NIFTY' if index_name.lower() == 'nifty' else 'SENSEX'
             underlying_exch = 'NSE' if index_name.lower() == 'nifty' else 'BSE'
             ret = self.api.get_option_chain(exchange=underlying_exch, tradingsymbol=underlying_tsym, strikeprice=strike_price, count=5)
@@ -82,11 +84,9 @@ class FlattradeClient:
                     options.sort(key=lambda x: abs(float(x.get('strprc', 0)) - strike_price))
                     return options[0]
 
-            # Fallback to searchscrip if get_option_chain fails or returns nothing
             ret_search = self.api.searchscrip(exchange=exch, searchtext=search_txt)
             if ret_search and ret_search.get('stat') == 'Ok':
                 values = ret_search.get('values', [])
-                # Just return the first match since searchscrip is ordered by relevance/expiry usually
                 if values:
                     return values[0]
         except Exception as e:

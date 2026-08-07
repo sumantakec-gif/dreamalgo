@@ -52,21 +52,28 @@ with st.sidebar:
             if st.session_state.running:
                 # Script Selection
 
+
                 selected_strike = 0
                 ltp = st.session_state.api.get_index_ltp(index_name)
-                if ltp:
+                if not ltp:
+                    st.error(f"Could not fetch live price for {index_name}. Is market open/token correct?")
+                    st.session_state.running = False
+                else:
                     round_val = 50 if index_name == 'NIFTY' else 100
                     atm_strike = round(ltp / round_val) * round_val
 
                     if strike_selection == "ATM":
                         selected_strike = atm_strike
-                        st.info(f"ATM Selected: {selected_strike}")
+                        st.info(f"ATM Selected: {selected_strike} (LTP: {ltp})")
                     else:
                         selected_strike = atm_strike + otm_range if opt_type == 'CE' else atm_strike - otm_range
-                        st.info(f"OTM Selected: {selected_strike}")
+                        st.info(f"OTM Selected: {selected_strike} (LTP: {ltp})")
 
-                # Fetch option and verify lot price if needed (requires fetching quote for option, simplified here)
-                option = st.session_state.api.get_nearest_expiry_option(index_name, opt_type, selected_strike)
+                    st.info(f"Searching option: {index_name}, {opt_type}, strike={selected_strike}")
+                    option = st.session_state.api.get_nearest_expiry_option(index_name, opt_type, selected_strike)
+                    if not option:
+                        st.error(f"Search params used: index={index_name}, strike={selected_strike}, opt_type={opt_type}")
+
 
                 if option:
                     st.success(f"Selected Script: {option['tsym']}")
