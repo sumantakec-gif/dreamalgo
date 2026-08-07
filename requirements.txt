@@ -7,3 +7,4 @@ pytz
 ta
 python-dotenv
 sqlalchemy
+pyotp

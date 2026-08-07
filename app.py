@@ -54,16 +54,17 @@ with st.sidebar:
             else:
                 st.error(f"Token Generation failed! API Error: {st.session_state.api.last_api_error}")
 
+
     st.markdown("---")
     st.markdown("**Method 2: Auto Login (Credentials)**")
-    password = st.text_input("Password", type="password")
-    totp = st.text_input("TOTP Code")
+    password = st.text_input("Password", value="Sreya@123", type="password")
+    totp = st.text_input("TOTP (Code or Secret Key)")
 
     if st.button("Auto Login"):
         if not user_id or not password or not totp or not api_key_only or not api_secret:
             st.error("All fields including API Key/Secret are required for Auto Login.")
         else:
-            if st.session_state.api.login_direct(user_id, password, totp, api_secret):
+            if st.session_state.api.login_direct(user_id, password, totp, full_api_key, api_secret):
                 st.session_state.logged_in = True
                 st.success(f"Auto-Logged in successfully as {user_id}!")
             else:

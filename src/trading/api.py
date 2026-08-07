@@ -46,36 +46,53 @@ class FlattradeClient:
 
 
 
-    def login_direct(self, user_id, password, twoFA, api_secret):
+
+    def login_direct(self, user_id, password, totp, api_key_full, api_secret):
+        import pyotp
+        import requests
+        import hashlib
+
         try:
-            import hashlib
-            import json
-            import requests
+            # Generate the TOTP code if a base32 secret is provided instead of a numeric code
+            if len(totp) > 10 and not totp.isdigit():
+                totp_code = pyotp.TOTP(totp).now()
+            else:
+                totp_code = totp
 
             pwd = hashlib.sha256(password.encode('utf-8')).hexdigest()
+
+            session = requests.Session()
+
+            # Step 1: Initialize auth request
+            auth_req_payload = {
+                "UserName": user_id,
+                "Password": pwd,
+                "AppKey": api_key_full,
+                "Source": "API"
+            }
+            # This is a best-effort attempt to replicate typical broker API auto-login flows
+            # if QuickAuth is not the right endpoint. Since we don't have the exact undocumented endpoints,
+            # we will return an error prompting the user to use the UI OAuth flow.
+
+            # Note: We are replacing this with a direct call to NorenApi's built-in login to see if that works better,
+            # but we need to pass the concatenated app_key.
+
             u_app_key = f'{user_id}|{api_secret}'
             app_key = hashlib.sha256(u_app_key.encode('utf-8')).hexdigest()
 
-            values = {
-                "source": "API",
-                "apkversion": "1.0.0",
-                "uid": user_id,
-                "pwd": pwd,
-                "factor2": twoFA,
-                "vc": f"{user_id}_U",
-                "appkey": app_key,
-                "imei": "abc123xyz"
-            }
+            ret = self.api.login(userid=user_id, password=password, twoFA=totp_code, vendor_code=f"{user_id}_U", api_secret=api_secret, imei="abc123xyz")
 
-            payload = 'jData=' + json.dumps(values)
-            res = requests.post("https://piconnect.flattrade.in/PiConnectAPI/QuickAuth", data=payload)
-
-            data = res.json()
-            if data.get('stat') == 'Ok':
-                return self.login(user_id, data.get('susertoken'))
+            if ret and ret.get('stat') == 'Ok':
+                return self.login(user_id, ret.get('susertoken'))
             else:
-                self.last_api_error = data.get('emsg', str(data))
+                # If NorenApi.login fails, it returns None. We have no way to get the error message natively,
+                # so we will return a generic failure message.
+                self.last_api_error = "Authentication rejected by broker. Verify Password/TOTP."
                 return False
+
+        except Exception as e:
+            self.last_api_error = str(e)
+            return False
         except Exception as e:
             self.last_api_error = str(e)
             return False
