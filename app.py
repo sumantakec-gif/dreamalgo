@@ -7,14 +7,29 @@ from src.trading.strategy import StrategyController
 from src.database.crud import get_trade_logs, get_order_reports, save_user_config, get_user_config
 from io import BytesIO
 
+
+import os
+import json
+
 st.set_page_config(layout="wide", page_title="Flattrade Option Algo")
 
+def save_session_cache(uid, token):
+    with open('.flattrade_session.json', 'w') as f:
+        json.dump({'uid': uid, 'token': token}, f)
+
+def load_session_cache():
+    if os.path.exists('.flattrade_session.json'):
+        try:
+            with open('.flattrade_session.json', 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    return None
 
 def add_sys_log(msg):
     import datetime
     timestamp = datetime.datetime.now().strftime("%H:%M:%S")
     st.session_state.system_logs.append(f"[{timestamp}] {msg}")
-    # Keep last 50 logs
     if len(st.session_state.system_logs) > 50:
         st.session_state.system_logs.pop(0)
 
@@ -24,10 +39,21 @@ if 'show_settings' not in st.session_state:
 if 'api' not in st.session_state or getattr(st.session_state.api, 'log', None) is None:
     st.session_state.api = FlattradeClient(log_callback=add_sys_log)
 
-    st.session_state.logged_in = False
-    st.session_state.strategy = None
-    st.session_state.running = False
+if 'system_logs' not in st.session_state:
     st.session_state.system_logs = []
+if 'strategy' not in st.session_state:
+    st.session_state.strategy = None
+if 'running' not in st.session_state:
+    st.session_state.running = False
+
+# Attempt to auto-login from cached file if not already logged in
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+    cached = load_session_cache()
+    if cached:
+        if st.session_state.api.login(cached['uid'], cached['token']):
+            st.session_state.logged_in = True
+            add_sys_log(f"Restored session from cache for {cached['uid']}")
 
 
 
@@ -59,6 +85,7 @@ with st.sidebar:
                 if uid and token:
                     if st.session_state.api.login(uid, token):
                         st.session_state.logged_in = True
+                        save_session_cache(uid, token)
                         st.success(f"Connected successfully as {uid}!")
                         st.query_params.clear()
                         st.rerun()
@@ -156,7 +183,10 @@ def render_chart(df):
 
 st.subheader("System Logs (Live API Debug)")
 if st.session_state.system_logs:
-    st.code("\n".join(st.session_state.system_logs[::-1]), language="text")
+    log_text = "
+".join(st.session_state.system_logs[::-1])
+    st.markdown(f'<div style="height: 200px; overflow-y: scroll; background-color: #f0f2f6; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; white-space: pre-wrap;">{log_text}</div>', unsafe_allow_html=True)
+
 
 # Main Area
 
