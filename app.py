@@ -179,7 +179,9 @@ if st.session_state.running and st.session_state.strategy:
             st.session_state.strategy.evaluate_signals(df)
 
             # Update placeholders
-            chart_placeholder.plotly_chart(render_chart(df), use_container_width=True)
+
+            # Update placeholders with unique key to prevent DuplicateElementId error
+            chart_placeholder.plotly_chart(render_chart(df), use_container_width=True, key=f"chart_{int(time.time())}")
 
             latest_close = df.iloc[-1]['close']
             ltp_placeholder.metric("Last Traded Price", f"₹ {latest_close:.2f}")
