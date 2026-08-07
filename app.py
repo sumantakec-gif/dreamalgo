@@ -183,8 +183,7 @@ def render_chart(df):
 
 st.subheader("System Logs (Live API Debug)")
 if st.session_state.system_logs:
-    log_text = "
-".join(st.session_state.system_logs[::-1])
+    log_text = "\n".join(st.session_state.system_logs[::-1])
     st.markdown(f'<div style="height: 200px; overflow-y: scroll; background-color: #f0f2f6; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; white-space: pre-wrap;">{log_text}</div>', unsafe_allow_html=True)
 
 
