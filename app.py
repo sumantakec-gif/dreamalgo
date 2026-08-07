@@ -61,17 +61,12 @@ with st.sidebar:
         else:
             # For direct login, Flattrade NorenApi requires vendor_code and imei. Flattrade API SDK passes 'API' as source, and empty strings can work.
             # Using the api helper directly.
-            ret = st.session_state.api.api.login(userid=user_id, password=password, twoFA=totp, vendor_code=f"{user_id}_U", api_secret=api_secret, imei="abc123xyz")
-            if ret and ret.get('stat') == 'Ok':
-                # The raw SDK login returns the session dict but our FlattradeClient wraps it.
-                token = ret.get('susertoken')
-                if st.session_state.api.login(user_id, token):
-                    st.session_state.logged_in = True
-                    st.success(f"Auto-Logged in successfully as {user_id}!")
-                else:
-                    st.error(f"Validation failed after auto login! Error: {st.session_state.api.last_api_error}")
+
+            if st.session_state.api.login_direct(user_id, password, totp, api_secret):
+                st.session_state.logged_in = True
+                st.success(f"Auto-Logged in successfully as {user_id}!")
             else:
-                st.error(f"Auto Login failed! API Response: {ret}")
+                st.error(f"Auto Login failed! API Response: {st.session_state.api.last_api_error}")
 
 
     st.header("Strategy Settings")

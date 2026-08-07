@@ -45,6 +45,41 @@ class FlattradeClient:
 
 
 
+
+    def login_direct(self, user_id, password, twoFA, api_secret):
+        try:
+            import hashlib
+            import json
+            import requests
+
+            pwd = hashlib.sha256(password.encode('utf-8')).hexdigest()
+            u_app_key = f'{user_id}|{api_secret}'
+            app_key = hashlib.sha256(u_app_key.encode('utf-8')).hexdigest()
+
+            values = {
+                "source": "API",
+                "apkversion": "1.0.0",
+                "uid": user_id,
+                "pwd": pwd,
+                "factor2": twoFA,
+                "vc": f"{user_id}_U",
+                "appkey": app_key,
+                "imei": "abc123xyz"
+            }
+
+            payload = 'jData=' + json.dumps(values)
+            res = requests.post("https://piconnect.flattrade.in/PiConnectAPI/QuickAuth", data=payload)
+
+            data = res.json()
+            if data.get('stat') == 'Ok':
+                return self.login(user_id, data.get('susertoken'))
+            else:
+                self.last_api_error = data.get('emsg', str(data))
+                return False
+        except Exception as e:
+            self.last_api_error = str(e)
+            return False
+
     def generate_session_token(self, api_key, api_secret, auth_code):
         try:
             # Generate SHA256 hash
