@@ -63,12 +63,15 @@ with st.sidebar:
     if st.button("Auto Login"):
         if not user_id or not password or not totp or not api_key_only or not api_secret:
             st.error("All fields including API Key/Secret are required for Auto Login.")
+
         else:
             if st.session_state.api.login_direct(user_id, password, totp, full_api_key, api_secret):
                 st.session_state.logged_in = True
                 st.success(f"Auto-Logged in successfully as {user_id}!")
+                st.info(f"API Flow Trace: {st.session_state.api.last_debug_info}")
             else:
                 st.error(f"Auto Login failed! API Response: {st.session_state.api.last_api_error}")
+                st.warning(f"API Flow Trace: {st.session_state.api.last_debug_info}")
 
 
     st.header("Strategy Settings")
