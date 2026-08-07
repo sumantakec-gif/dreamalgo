@@ -18,16 +18,21 @@ if 'api' not in st.session_state:
 
 
 
+
 # Sidebar
 with st.sidebar:
     st.header("Authentication")
 
-    api_key = st.text_input("API Key (Client ID ::: API Key)", value="FZ06795:::c1754e77127444d4912bdaadce1c3b2e")
+    user_id = st.text_input("User ID", value="FZ06795")
+    api_key_only = st.text_input("API Key", value="c1754e77127444d4912bdaadce1c3b2e")
     api_secret = st.text_input("API Secret", value="2026.404dd20858d8465a824edf9f733f68867e9b92909ed07cd4", type="password")
+
+    # Flattrade technically expects ClientID:::API_KEY for its app_key parameters
+    full_api_key = f"{user_id}:::{api_key_only}"
 
     st.markdown("---")
     st.markdown("**Method 1: Manual Auth (Browser Redirect)**")
-    auth_url = f"https://auth.flattrade.in/?app_key={api_key}"
+    auth_url = f"https://auth.flattrade.in/?app_key={full_api_key}"
     st.markdown(f"[Click Here to Login to Flattrade]({auth_url})")
 
     query_params = st.query_params
@@ -35,10 +40,10 @@ with st.sidebar:
     auth_code = st.text_input("Auth Code (Auto-filled)", value=url_code)
 
     if st.button("Generate Token & Login") or (url_code and not st.session_state.logged_in):
-        if not api_key or not api_secret or not auth_code:
+        if not api_key_only or not api_secret or not auth_code:
             st.error("API Key, Secret, and Auth Code are required.")
         else:
-            uid, token = st.session_state.api.generate_session_token(api_key, api_secret, auth_code)
+            uid, token = st.session_state.api.generate_session_token(full_api_key, api_secret, auth_code)
             if uid and token:
                 if st.session_state.api.login(uid, token):
                     st.session_state.logged_in = True
@@ -51,17 +56,13 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("**Method 2: Auto Login (Credentials)**")
-    user_id = st.text_input("User ID", value="FZ06795")
     password = st.text_input("Password", type="password")
     totp = st.text_input("TOTP Code")
 
     if st.button("Auto Login"):
-        if not user_id or not password or not totp or not api_key or not api_secret:
+        if not user_id or not password or not totp or not api_key_only or not api_secret:
             st.error("All fields including API Key/Secret are required for Auto Login.")
         else:
-            # For direct login, Flattrade NorenApi requires vendor_code and imei. Flattrade API SDK passes 'API' as source, and empty strings can work.
-            # Using the api helper directly.
-
             if st.session_state.api.login_direct(user_id, password, totp, api_secret):
                 st.session_state.logged_in = True
                 st.success(f"Auto-Logged in successfully as {user_id}!")
@@ -128,73 +129,76 @@ with st.sidebar:
                     st.error("Could not find matching option script.")
                     st.session_state.running = False
 
+
 # Main Area
 st.title("Flattrade Options Algo Trading")
 
-chart_placeholder = st.empty()
-pnl_placeholder = st.empty()
-logs_placeholder = st.empty()
-reports_placeholder = st.empty()
-
-# Function to render chart
-def render_chart(df):
-    if df.empty:
-        return go.Figure()
-    fig = go.Figure(data=[go.Candlestick(x=df['timestamp'],
-                open=df['open'], high=df['high'],
-                low=df['low'], close=df['close'], name="Candles")])
-    if 'ema_9' in df:
-        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['ema_9'], mode='lines', name='9 EMA Close'))
-    if 'ema_25' in df:
-        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['ema_25'], mode='lines', name='25 EMA Close'))
-    if 'ema_50_low' in df:
-        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['ema_50_low'], mode='lines', name='50 EMA Low'))
-    if 'ema_250' in df:
-        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['ema_250'], mode='lines', name='250 EMA Close'))
-    if 'vwap' in df:
-        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['vwap'], mode='lines', name='VWAP'))
-    fig.update_layout(height=600, xaxis_rangeslider_visible=False)
-    return fig
-
-# Main Loop Execution for Streamlit
+# We will handle the loop here instead of using st.rerun() globally if running
 if st.session_state.running and st.session_state.strategy:
+    # Get initial data
     df = st.session_state.strategy.fetch_and_calculate()
-    if not df.empty:
-        st.session_state.strategy.evaluate_signals(df)
-        chart_placeholder.plotly_chart(render_chart(df), use_container_width=True)
 
-    pnl_placeholder.metric("Live Running P&L", f"₹ {st.session_state.strategy.running_pnl:.2f}")
+    col1, col2 = st.columns([3, 1])
 
-    # Auto refresh every 5 seconds (using st.rerun())
-    time.sleep(5)
-    st.rerun()
+    with col1:
+        chart_placeholder = st.empty()
+    with col2:
+        ltp_placeholder = st.empty()
+        pnl_placeholder = st.empty()
 
-# Logs and Reports (rendered regardless of running state)
-st.subheader("Trade Logs")
-logs = get_trade_logs(20)
-if logs:
-    log_data = [{"Time": l.timestamp, "Message": l.message} for l in logs]
-    logs_placeholder.dataframe(pd.DataFrame(log_data), use_container_width=True)
+    logs_placeholder = st.empty()
+    reports_placeholder = st.empty()
 
-st.subheader("Order Reports")
-reports = get_order_reports()
-if reports:
-    rep_df = pd.DataFrame([{
-        "Symbol": r.symbol, "ExpDate": r.exp_date, "StrikePrice": r.strike_price, "OpType": r.op_type,
-        "BuySell": r.buy_sell, "Qty": r.qty, "Price": r.price, "TradeQty": r.trade_qty,
-        "AvgPrice": r.avg_price, "TimeStamp": r.timestamp, "Points": r.points,
-        "Amount": r.amount, "Running P&L": r.running_pnl, "Gain %": r.gain_percent,
-        "Invested Amount": r.invested_amount
-    } for r in reports])
-    reports_placeholder.dataframe(rep_df, use_container_width=True)
+    while st.session_state.running:
+        df = st.session_state.strategy.fetch_and_calculate()
+        if not df.empty:
+            st.session_state.strategy.evaluate_signals(df)
 
-    # Download Excel
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        rep_df.to_excel(writer, index=False, sheet_name='Orders')
-    st.download_button(
-        label="Download Orders Excel",
-        data=output.getvalue(),
-        file_name="order_reports.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+            # Update placeholders
+            chart_placeholder.plotly_chart(render_chart(df), use_container_width=True)
+
+            latest_close = df.iloc[-1]['close']
+            ltp_placeholder.metric("Last Traded Price", f"₹ {latest_close:.2f}")
+            pnl_placeholder.metric("Live Running P&L", f"₹ {st.session_state.strategy.running_pnl:.2f}")
+
+        logs = get_trade_logs(20)
+        if logs:
+            log_data = [{"Time": l.timestamp, "Message": l.message} for l in logs]
+            logs_placeholder.dataframe(pd.DataFrame(log_data), use_container_width=True)
+
+        reports = get_order_reports()
+        if reports:
+            rep_df = pd.DataFrame([{
+                "Symbol": r.symbol, "ExpDate": r.exp_date, "StrikePrice": r.strike_price, "OpType": r.op_type,
+                "BuySell": r.buy_sell, "Qty": r.qty, "Price": r.price, "TradeQty": r.trade_qty,
+                "AvgPrice": r.avg_price, "TimeStamp": r.timestamp, "Points": r.points,
+                "Amount": r.amount, "Running P&L": r.running_pnl, "Gain %": r.gain_percent,
+                "Invested Amount": r.invested_amount
+            } for r in reports])
+            reports_placeholder.dataframe(rep_df, use_container_width=True)
+
+        time.sleep(5)
+else:
+    # Just render static placeholders if not running
+    chart_placeholder = st.empty()
+    pnl_placeholder = st.empty()
+    logs_placeholder = st.empty()
+    reports_placeholder = st.empty()
+
+    st.subheader("Trade Logs")
+    logs = get_trade_logs(20)
+    if logs:
+        log_data = [{"Time": l.timestamp, "Message": l.message} for l in logs]
+        logs_placeholder.dataframe(pd.DataFrame(log_data), use_container_width=True)
+
+    st.subheader("Order Reports")
+    reports = get_order_reports()
+    if reports:
+        rep_df = pd.DataFrame([{
+            "Symbol": r.symbol, "ExpDate": r.exp_date, "StrikePrice": r.strike_price, "OpType": r.op_type,
+            "BuySell": r.buy_sell, "Qty": r.qty, "Price": r.price, "TradeQty": r.trade_qty,
+            "AvgPrice": r.avg_price, "TimeStamp": r.timestamp, "Points": r.points,
+            "Amount": r.amount, "Running P&L": r.running_pnl, "Gain %": r.gain_percent,
+            "Invested Amount": r.invested_amount
+        } for r in reports])
+        reports_placeholder.dataframe(rep_df, use_container_width=True)
