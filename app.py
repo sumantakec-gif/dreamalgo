@@ -131,6 +131,26 @@ with st.sidebar:
                     st.session_state.running = False
 
 
+
+def render_chart(df):
+    if df.empty:
+        return go.Figure()
+    fig = go.Figure(data=[go.Candlestick(x=df['timestamp'],
+                open=df['open'], high=df['high'],
+                low=df['low'], close=df['close'], name="Candles")])
+    if 'ema_9' in df:
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['ema_9'], mode='lines', name='9 EMA Close'))
+    if 'ema_25' in df:
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['ema_25'], mode='lines', name='25 EMA Close'))
+    if 'ema_50_low' in df:
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['ema_50_low'], mode='lines', name='50 EMA Low'))
+    if 'ema_250' in df:
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['ema_250'], mode='lines', name='250 EMA Close'))
+    if 'vwap' in df:
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['vwap'], mode='lines', name='VWAP'))
+    fig.update_layout(height=600, xaxis_rangeslider_visible=False)
+    return fig
+
 # Main Area
 st.title("Flattrade Options Algo Trading")
 
