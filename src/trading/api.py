@@ -145,20 +145,29 @@ class FlattradeClient:
             self.last_api_error = f"Exception in token generation: {str(e)}"
             return None, None
 
+
     def login(self, user_id, token):
         try:
-            # First set session locally
             self.api.set_session(userid=user_id, password='', usertoken=token)
-            # Then verify it by making a harmless request
             self.log(f"Testing token validity via get_limits()...")
             ret = self.api.get_limits()
             if ret and ret.get('stat') == 'Ok':
                 logging.info("Login successful")
+
+                # Automatically save the valid session token
+                import json, os
+                with open('.flattrade_session.json', 'w') as f:
+                    json.dump({'uid': user_id, 'token': token}, f)
+
                 return True
             else:
                 self.last_api_error = str(ret) if ret else "Empty response"
                 logging.error(f"Login failed: {self.last_api_error}")
                 return False
+        except Exception as e:
+            self.last_api_error = str(e)
+            logging.error(f"Login exception: {e}")
+            return False
         except Exception as e:
             self.last_api_error = str(e)
             logging.error(f"Login exception: {e}")

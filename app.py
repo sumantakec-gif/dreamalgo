@@ -55,6 +55,7 @@ with st.sidebar:
             if uid and token:
                 if st.session_state.api.login(uid, token):
                     st.session_state.logged_in = True
+                    save_session_cache(uid, token)
                     st.success(f"Logged in successfully as {uid}!")
                     st.query_params.clear()
                 else:
