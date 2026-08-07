@@ -1,19 +1,56 @@
-from flattrade_api.api_helper import NorenApiPy, Order
 import logging
+import concurrent.futures
+from NorenRestApiPy.NorenApi import NorenApi
+
+class Order:
+    def __init__(self, buy_or_sell:str = None, product_type:str = None,
+                 exchange: str = None, tradingsymbol:str =None,
+                 price_type: str = None, quantity: int = None,
+                 price: float = None, trigger_price:float = None, discloseqty: int = 0,
+                 retention:str = 'DAY', remarks: str = "tag",
+                 order_id:str = None):
+        self.buy_or_sell=buy_or_sell
+        self.product_type=product_type
+        self.exchange=exchange
+        self.tradingsymbol=tradingsymbol
+        self.quantity=quantity
+        self.discloseqty=discloseqty
+        self.price_type=price_type
+        self.price=price
+        self.trigger_price=trigger_price
+        self.retention=retention
+        self.remarks=remarks
+        self.order_id=order_id
+
+class NorenApiPy(NorenApi):
+    def __init__(self):
+        NorenApi.__init__(self, host='https://piconnect.flattrade.in/PiConnectAPI/', websocket='wss://piconnect.flattrade.in/PiConnectWSAPI/')
+
+    def placeOrder(self, order: Order):
+        ret = NorenApi.place_order(self, buy_or_sell=order.buy_or_sell, product_type=order.product_type,
+                            exchange=order.exchange, tradingsymbol=order.tradingsymbol,
+                            quantity=order.quantity, discloseqty=order.discloseqty, price_type=order.price_type,
+                            price=order.price, trigger_price=order.trigger_price,
+                            retention=order.retention, remarks=order.remarks)
+        return ret
 
 class FlattradeClient:
     def __init__(self):
         self.api = NorenApiPy()
 
+
     def login(self, user_id, token):
         try:
             ret = self.api.set_session(userid=user_id, password='', usertoken=token)
-            if ret and ret.get('stat') == 'Ok':
+            if ret:
                 logging.info("Login successful")
                 return True
             else:
-                logging.error(f"Login failed: {ret}")
+                logging.error("Login failed")
                 return False
+        except Exception as e:
+            logging.error(f"Login exception: {e}")
+            return False
         except Exception as e:
             logging.error(f"Login exception: {e}")
             return False
@@ -27,30 +64,31 @@ class FlattradeClient:
             return float(ret.get('lp', 0))
         return None
 
-    def get_nearest_expiry_option(self, index_name, opt_type, strike_price):
-        exchange = 'NFO' if index_name.lower() == 'nifty' else 'BFO'
-        # Base trading symbol format for search. E.g. NIFTY
-        search_sym = 'NIFTY' if index_name.lower() == 'nifty' else 'SENSEX'
 
-        # We can use searchscrip or get_option_chain
-        # Let's use get_option_chain which expects exchange, tradingsymbol of underlying, strikeprice and count
-        # Wait, get_option_chain needs tradingsymbol. Let's construct it.
-        # NIFTY index trading symbol on NSE is NIFTY 50
-        underlying_tsym = 'NIFTY 50' if index_name.lower() == 'nifty' else 'SENSEX'
-        underlying_exch = 'NSE' if index_name.lower() == 'nifty' else 'BSE'
+    def get_nearest_expiry_option(self, index_name, opt_type, strike_price):
+        exch = 'NFO' if index_name.lower() == 'nifty' else 'BFO'
+        search_txt = f"{'NIFTY' if index_name.lower() == 'nifty' else 'SENSEX'} {strike_price} {opt_type}"
 
         try:
+            # First try get_option_chain
+            underlying_tsym = 'NIFTY' if index_name.lower() == 'nifty' else 'SENSEX'
+            underlying_exch = 'NSE' if index_name.lower() == 'nifty' else 'BSE'
             ret = self.api.get_option_chain(exchange=underlying_exch, tradingsymbol=underlying_tsym, strikeprice=strike_price, count=5)
+
             if ret and ret.get('stat') == 'Ok':
                 values = ret.get('values', [])
-                # Filter by option type (CE or PE)
                 options = [v for v in values if v.get('optt') == opt_type.upper()]
                 if options:
-                    # Sort by expiry date (exd) assuming it's available or we just take the first one returned (API usually returns nearest expiry first or we need to sort)
-                    # Flattrade get_option_chain doesn't explicitly guarantee nearest expiry order, but let's assume it returns matching strikes.
-                    # A better way is using searchscrip if get_option_chain fails us, but let's try this.
                     options.sort(key=lambda x: abs(float(x.get('strprc', 0)) - strike_price))
                     return options[0]
+
+            # Fallback to searchscrip if get_option_chain fails or returns nothing
+            ret_search = self.api.searchscrip(exchange=exch, searchtext=search_txt)
+            if ret_search and ret_search.get('stat') == 'Ok':
+                values = ret_search.get('values', [])
+                # Just return the first match since searchscrip is ordered by relevance/expiry usually
+                if values:
+                    return values[0]
         except Exception as e:
             logging.error(f"Error fetching option chain: {e}")
         return None
