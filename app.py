@@ -21,7 +21,7 @@ if 'api' not in st.session_state:
 with st.sidebar:
     st.header("Authentication")
 
-    api_key = st.text_input("API Key", value="4cfe6XXXXXXXXXXXXXXXXX0c3c")
+    api_key = st.text_input("API Key", value="c1754e77127444d4912bdaadce1c3b2e")
     api_secret = st.text_input("API Secret", value="2026.404dd20858d8465a824edf9f733f68867e9b92909ed07cd4", type="password")
 
     auth_url = f"https://auth.flattrade.in/?app_key={api_key}"
