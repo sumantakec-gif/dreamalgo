@@ -25,11 +25,15 @@ with st.sidebar:
     api_secret = st.text_input("API Secret", value="2026.404dd20858d8465a824edf9f733f68867e9b92909ed07cd4", type="password")
 
     auth_url = f"https://auth.flattrade.in/?app_key={api_key}"
-    st.markdown(f"[Click Here to Get Auth Code]({auth_url})")
+    st.markdown(f"[Click Here to Login to Flattrade]({auth_url})")
 
-    auth_code = st.text_input("Auth Code (From URL Redirect)")
+    # Check if the URL has the ?code= parameter from the redirect
+    query_params = st.query_params
+    url_code = query_params.get("code", "")
 
-    if st.button("Generate Token & Login"):
+    auth_code = st.text_input("Auth Code (Auto-filled from URL)", value=url_code)
+
+    if st.button("Generate Token & Login") or (url_code and not st.session_state.logged_in):
         if not api_key or not api_secret or not auth_code:
             st.error("API Key, Secret, and Auth Code are required.")
         else:
@@ -38,6 +42,8 @@ with st.sidebar:
                 if st.session_state.api.login(uid, token):
                     st.session_state.logged_in = True
                     st.success(f"Logged in successfully as {uid}!")
+                    # Clear query params so it doesn't try to log in again on refresh
+                    st.query_params.clear()
                 else:
                     st.error(f"Login validation failed! API Error: {st.session_state.api.last_api_error}")
             else:
