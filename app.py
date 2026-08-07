@@ -17,21 +17,22 @@ if 'api' not in st.session_state:
 
 
 
+
 # Sidebar
 with st.sidebar:
     st.header("Authentication")
 
-    api_key = st.text_input("API Key", value="c1754e77127444d4912bdaadce1c3b2e")
+    api_key = st.text_input("API Key (Client ID ::: API Key)", value="FZ06795:::c1754e77127444d4912bdaadce1c3b2e")
     api_secret = st.text_input("API Secret", value="2026.404dd20858d8465a824edf9f733f68867e9b92909ed07cd4", type="password")
 
+    st.markdown("---")
+    st.markdown("**Method 1: Manual Auth (Browser Redirect)**")
     auth_url = f"https://auth.flattrade.in/?app_key={api_key}"
     st.markdown(f"[Click Here to Login to Flattrade]({auth_url})")
 
-    # Check if the URL has the ?code= parameter from the redirect
     query_params = st.query_params
     url_code = query_params.get("code", "")
-
-    auth_code = st.text_input("Auth Code (Auto-filled from URL)", value=url_code)
+    auth_code = st.text_input("Auth Code (Auto-filled)", value=url_code)
 
     if st.button("Generate Token & Login") or (url_code and not st.session_state.logged_in):
         if not api_key or not api_secret or not auth_code:
@@ -42,12 +43,35 @@ with st.sidebar:
                 if st.session_state.api.login(uid, token):
                     st.session_state.logged_in = True
                     st.success(f"Logged in successfully as {uid}!")
-                    # Clear query params so it doesn't try to log in again on refresh
                     st.query_params.clear()
                 else:
                     st.error(f"Login validation failed! API Error: {st.session_state.api.last_api_error}")
             else:
                 st.error(f"Token Generation failed! API Error: {st.session_state.api.last_api_error}")
+
+    st.markdown("---")
+    st.markdown("**Method 2: Auto Login (Credentials)**")
+    user_id = st.text_input("User ID", value="FZ06795")
+    password = st.text_input("Password", type="password")
+    totp = st.text_input("TOTP Code")
+
+    if st.button("Auto Login"):
+        if not user_id or not password or not totp or not api_key or not api_secret:
+            st.error("All fields including API Key/Secret are required for Auto Login.")
+        else:
+            # For direct login, Flattrade NorenApi requires vendor_code and imei. Flattrade API SDK passes 'API' as source, and empty strings can work.
+            # Using the api helper directly.
+            ret = st.session_state.api.api.login(userid=user_id, password=password, twoFA=totp, vendor_code=f"{user_id}_U", api_secret=api_secret, imei="abc123xyz")
+            if ret and ret.get('stat') == 'Ok':
+                # The raw SDK login returns the session dict but our FlattradeClient wraps it.
+                token = ret.get('susertoken')
+                if st.session_state.api.login(user_id, token):
+                    st.session_state.logged_in = True
+                    st.success(f"Auto-Logged in successfully as {user_id}!")
+                else:
+                    st.error(f"Validation failed after auto login! Error: {st.session_state.api.last_api_error}")
+            else:
+                st.error(f"Auto Login failed! API Response: {ret}")
 
 
     st.header("Strategy Settings")
