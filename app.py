@@ -116,7 +116,7 @@ with st.sidebar:
                 if not ltp:
                     st.error(f"Could not fetch live price for {index_name}. Is market open/token correct?")
                     st.session_state.running = False
-    st.session_state.system_logs = []
+                    st.session_state.system_logs = []
                 else:
                     round_val = 50 if index_name == 'NIFTY' else 100
                     atm_strike = round(ltp / round_val) * round_val
@@ -144,7 +144,7 @@ with st.sidebar:
                 else:
                     st.error("Could not find matching option script.")
                     st.session_state.running = False
-    st.session_state.system_logs = []
+                    st.session_state.system_logs = []
 
 
 
