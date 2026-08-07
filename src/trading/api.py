@@ -42,6 +42,9 @@ class FlattradeClient:
     def __init__(self, log_callback=None):
         self.api = NorenApiPy()
         self.log = log_callback if log_callback else lambda x: None
+        self.last_debug_info = ""
+        self.last_api_error = ""
+
 
 
 
