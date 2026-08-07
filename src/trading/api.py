@@ -39,8 +39,9 @@ class NorenApiPy(NorenApi):
         return ret
 
 class FlattradeClient:
-    def __init__(self):
+    def __init__(self, log_callback=None):
         self.api = NorenApiPy()
+        self.log = log_callback if log_callback else lambda x: None
 
 
 
@@ -55,13 +56,13 @@ class FlattradeClient:
         import json
 
         try:
-            self.last_debug_info = "Starting Direct Auth Flow..."
+            self.log("Starting Direct Auth Flow...")
             if len(totp) > 10 and not totp.isdigit():
                 totp_code = pyotp.TOTP(totp).now()
-                self.last_debug_info += f" | PyOTP Generated TOTP: {totp_code}"
+                self.log(f"PyOTP Generated TOTP: {totp_code}")
             else:
                 totp_code = totp
-                self.last_debug_info += f" | Using manual TOTP: {totp_code}"
+                self.log(f"Using manual TOTP: {totp_code}")
 
             pwd = hashlib.sha256(password.encode('utf-8')).hexdigest()
             u_app_key = f'{user_id}|{api_secret}'
@@ -82,10 +83,10 @@ class FlattradeClient:
             payload = 'jData=' + json.dumps(values)
             url = "https://piconnect.flattrade.in/PiConnectAPI/QuickAuth"
 
-            self.last_debug_info += f" | Sending POST to QuickAuth"
+            self.log("Sending POST to QuickAuth")
             res = requests.post(url, data=payload)
 
-            self.last_debug_info += f" | HTTP Status: {res.status_code} | Raw Response: {res.text}"
+            self.log(f"HTTP Status: {res.status_code} | Raw Response: {res.text}")
 
             try:
                 data = res.json()
@@ -93,7 +94,7 @@ class FlattradeClient:
                 data = {}
 
             if data.get('stat') == 'Ok':
-                self.last_debug_info += " | Validating local session..."
+                self.log("Validating local session...")
                 return self.login(user_id, data.get('susertoken'))
             else:
                 self.last_api_error = data.get('emsg', str(data))
@@ -101,7 +102,7 @@ class FlattradeClient:
 
         except Exception as e:
             self.last_api_error = str(e)
-            self.last_debug_info += f" | Exception occurred: {str(e)}"
+            self.log(f"Exception occurred: {str(e)}")
             return False
 
         except Exception as e:
@@ -123,7 +124,9 @@ class FlattradeClient:
                 "api_secret": hashed_secret
             }
 
+            self.log(f"Sending token generation request for API Key: {api_key}")
             response = requests.post("https://authapi.flattrade.in/trade/apitoken", json=payload)
+            self.log(f"Token Gen HTTP {response.status_code} | Response: {response.text}")
             if response.status_code == 200:
                 data = response.json()
                 if data.get("stat") == "Ok":
@@ -144,6 +147,7 @@ class FlattradeClient:
             # First set session locally
             self.api.set_session(userid=user_id, password='', usertoken=token)
             # Then verify it by making a harmless request
+            self.log(f"Testing token validity via get_limits()...")
             ret = self.api.get_limits()
             if ret and ret.get('stat') == 'Ok':
                 logging.info("Login successful")
@@ -167,7 +171,9 @@ class FlattradeClient:
         # NIFTY token = 26000, SENSEX token = 1
         exchange = 'NSE' if index_name.lower() == 'nifty' else 'BSE'
         token = '26000' if index_name.lower() == 'nifty' else '1'
+        self.log(f"Fetching LTP for {index_name} (token={token})")
         ret = self.api.get_quotes(exchange=exchange, token=token)
+        self.log(f"LTP Response: {ret}")
         self.last_debug_info = f"get_index_ltp({exchange}, {token}) response: {ret}"
         if ret and ret.get('stat') == 'Ok':
             return float(ret.get('lp', 0))
@@ -186,27 +192,29 @@ class FlattradeClient:
         try:
             underlying_tsym = 'NIFTY' if index_name.lower() == 'nifty' else 'SENSEX'
             underlying_exch = 'NSE' if index_name.lower() == 'nifty' else 'BSE'
+            self.log(f"Calling get_option_chain({underlying_exch}, {underlying_tsym}, {strike_price})")
             ret = self.api.get_option_chain(exchange=underlying_exch, tradingsymbol=underlying_tsym, strikeprice=strike_price, count=5)
-            debug_logs.append(f"get_option_chain response: {ret}")
+            self.log(f"get_option_chain response: {ret}")
 
             if ret and ret.get('stat') == 'Ok':
                 values = ret.get('values', [])
                 options = [v for v in values if v.get('optt') == opt_type.upper()]
                 if options:
                     options.sort(key=lambda x: abs(float(x.get('strprc', 0)) - strike_price))
-                    self.last_debug_info = " | ".join(debug_logs)
+
                     return options[0]
 
+            self.log(f"Calling searchscrip({exch}, '{search_txt}')")
             ret_search = self.api.searchscrip(exchange=exch, searchtext=search_txt)
-            debug_logs.append(f"searchscrip({exch}, '{search_txt}') response: {ret_search}")
+            self.log(f"searchscrip response: {ret_search}")
 
             if ret_search and ret_search.get('stat') == 'Ok':
                 values = ret_search.get('values', [])
                 if values:
-                    self.last_debug_info = " | ".join(debug_logs)
+
                     return values[0]
 
-            self.last_debug_info = " | ".join(debug_logs)
+
             self.last_api_error = str(ret_search)
         except Exception as e:
             self.last_debug_info = f"Exception: {str(e)}"
@@ -215,6 +223,7 @@ class FlattradeClient:
 
     def get_intraday_data(self, exchange, token, start_time):
         try:
+            self.log(f"Fetching intraday data for token={token}, start={start_time}")
             ret = self.api.get_time_price_series(exchange=exchange, token=token, starttime=start_time, interval=1)
             if isinstance(ret, list) and len(ret) > 0 and ret[0].get('stat') == 'Ok':
                 return ret
@@ -239,7 +248,9 @@ class FlattradeClient:
                 trigger_price=trigger_price,
                 retention='DAY'
             )
+            self.log(f"Placing Order: {buy_or_sell} {quantity} {symbol} @ {price} | Type: {order_type}")
             ret = self.api.placeOrder(order)
+            self.log(f"Order Response: {ret}")
             return ret
         except Exception as e:
             logging.error(f"Error placing order: {e}")

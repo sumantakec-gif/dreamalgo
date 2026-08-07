@@ -9,11 +9,22 @@ from io import BytesIO
 
 st.set_page_config(layout="wide", page_title="Flattrade Option Algo")
 
-if 'api' not in st.session_state:
-    st.session_state.api = FlattradeClient()
+
+def add_sys_log(msg):
+    import datetime
+    timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+    st.session_state.system_logs.append(f"[{timestamp}] {msg}")
+    # Keep last 50 logs
+    if len(st.session_state.system_logs) > 50:
+        st.session_state.system_logs.pop(0)
+
+if 'api' not in st.session_state or getattr(st.session_state.api, 'log', None) is None:
+    st.session_state.api = FlattradeClient(log_callback=add_sys_log)
+
     st.session_state.logged_in = False
     st.session_state.strategy = None
     st.session_state.running = False
+    st.session_state.system_logs = []
 
 
 
@@ -105,6 +116,7 @@ with st.sidebar:
                 if not ltp:
                     st.error(f"Could not fetch live price for {index_name}. Is market open/token correct?")
                     st.session_state.running = False
+    st.session_state.system_logs = []
                 else:
                     round_val = 50 if index_name == 'NIFTY' else 100
                     atm_strike = round(ltp / round_val) * round_val
@@ -132,6 +144,7 @@ with st.sidebar:
                 else:
                     st.error("Could not find matching option script.")
                     st.session_state.running = False
+    st.session_state.system_logs = []
 
 
 
@@ -153,6 +166,11 @@ def render_chart(df):
         fig.add_trace(go.Scatter(x=df['timestamp'], y=df['vwap'], mode='lines', name='VWAP'))
     fig.update_layout(height=600, xaxis_rangeslider_visible=False)
     return fig
+
+
+st.subheader("System Logs (Live API Debug)")
+if st.session_state.system_logs:
+    st.code("\n".join(st.session_state.system_logs[::-1]), language="text")
 
 # Main Area
 st.title("Flattrade Options Algo Trading")
