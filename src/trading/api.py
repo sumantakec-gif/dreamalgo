@@ -25,6 +25,8 @@ class Order:
 class NorenApiPy(NorenApi):
     def __init__(self):
         NorenApi.__init__(self, host='https://piconnect.flattrade.in/PiConnectAPI/', websocket='wss://piconnect.flattrade.in/PiConnectWSAPI/')
+        self.last_debug_info = ""
+        self.last_api_error = ""
 
     def placeOrder(self, order: Order):
         ret = NorenApi.place_order(self, buy_or_sell=order.buy_or_sell, product_type=order.product_type,
@@ -56,40 +58,52 @@ class FlattradeClient:
             return False
 
     def get_index_ltp(self, index_name):
-        # Index tokens: Nifty 50 = NSE|26000, Sensex = BSE|1 (verify tokens)
+        # NIFTY token = 26000, SENSEX token = 1
         exchange = 'NSE' if index_name.lower() == 'nifty' else 'BSE'
-        token = '26000' if index_name.lower() == 'nifty' else '1' # Sensex Token needs verification but assuming standard mapping
+        token = '26000' if index_name.lower() == 'nifty' else '1'
         ret = self.api.get_quotes(exchange=exchange, token=token)
+        self.last_debug_info = f"get_index_ltp({exchange}, {token}) response: {ret}"
         if ret and ret.get('stat') == 'Ok':
             return float(ret.get('lp', 0))
+        self.last_api_error = str(ret)
         return None
 
 
 
+
     def get_nearest_expiry_option(self, index_name, opt_type, strike_price):
-        # Format strike without decimals for string searches
         strike_int = int(float(strike_price))
         exch = 'NFO' if index_name.lower() == 'nifty' else 'BFO'
         search_txt = f"{'NIFTY' if index_name.lower() == 'nifty' else 'SENSEX'} {strike_int} {opt_type}"
 
+        debug_logs = []
         try:
             underlying_tsym = 'NIFTY' if index_name.lower() == 'nifty' else 'SENSEX'
             underlying_exch = 'NSE' if index_name.lower() == 'nifty' else 'BSE'
             ret = self.api.get_option_chain(exchange=underlying_exch, tradingsymbol=underlying_tsym, strikeprice=strike_price, count=5)
+            debug_logs.append(f"get_option_chain response: {ret}")
 
             if ret and ret.get('stat') == 'Ok':
                 values = ret.get('values', [])
                 options = [v for v in values if v.get('optt') == opt_type.upper()]
                 if options:
                     options.sort(key=lambda x: abs(float(x.get('strprc', 0)) - strike_price))
+                    self.last_debug_info = " | ".join(debug_logs)
                     return options[0]
 
             ret_search = self.api.searchscrip(exchange=exch, searchtext=search_txt)
+            debug_logs.append(f"searchscrip({exch}, '{search_txt}') response: {ret_search}")
+
             if ret_search and ret_search.get('stat') == 'Ok':
                 values = ret_search.get('values', [])
                 if values:
+                    self.last_debug_info = " | ".join(debug_logs)
                     return values[0]
+
+            self.last_debug_info = " | ".join(debug_logs)
+            self.last_api_error = str(ret_search)
         except Exception as e:
+            self.last_debug_info = f"Exception: {str(e)}"
             logging.error(f"Error fetching option chain: {e}")
         return None
 

@@ -71,10 +71,11 @@ with st.sidebar:
                         selected_strike = atm_strike + otm_range if opt_type == 'CE' else atm_strike - otm_range
                         st.info(f"OTM Selected: {selected_strike} (LTP: {ltp})")
 
+
                     st.info(f"Searching option: {index_name}, {opt_type}, strike={selected_strike}")
                     option = st.session_state.api.get_nearest_expiry_option(index_name, opt_type, selected_strike)
                     if not option:
-                        st.error(f"Search params used: index={index_name}, strike={selected_strike}, opt_type={opt_type}")
+                        st.error(f"Search failed. Last API Debug: {st.session_state.api.last_debug_info}")
 
 
                 if option:
