@@ -16,18 +16,32 @@ if 'api' not in st.session_state:
     st.session_state.running = False
 
 
+
 # Sidebar
 with st.sidebar:
-    st.header("Credentials")
-    uid = st.text_input("User ID", value="FZ06795")
-    token = st.text_input("API Token", value="c1754e77127444d4912bdaadce1c3b2e", type="password")
+    st.header("Authentication")
 
-    if st.button("Login"):
-        if st.session_state.api.login(uid, token):
-            st.session_state.logged_in = True
-            st.success("Logged in successfully!")
+    api_key = st.text_input("API Key", value="4cfe6XXXXXXXXXXXXXXXXX0c3c")
+    api_secret = st.text_input("API Secret", value="2026.404dd20858d8465a824edf9f733f68867e9b92909ed07cd4", type="password")
+
+    auth_url = f"https://auth.flattrade.in/?app_key={api_key}"
+    st.markdown(f"[Click Here to Get Auth Code]({auth_url})")
+
+    auth_code = st.text_input("Auth Code (From URL Redirect)")
+
+    if st.button("Generate Token & Login"):
+        if not api_key or not api_secret or not auth_code:
+            st.error("API Key, Secret, and Auth Code are required.")
         else:
-            st.error(f"Login failed! API Error: {st.session_state.api.last_api_error}")
+            uid, token = st.session_state.api.generate_session_token(api_key, api_secret, auth_code)
+            if uid and token:
+                if st.session_state.api.login(uid, token):
+                    st.session_state.logged_in = True
+                    st.success(f"Logged in successfully as {uid}!")
+                else:
+                    st.error(f"Login validation failed! API Error: {st.session_state.api.last_api_error}")
+            else:
+                st.error(f"Token Generation failed! API Error: {st.session_state.api.last_api_error}")
 
 
     st.header("Strategy Settings")

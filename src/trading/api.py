@@ -1,5 +1,7 @@
 import logging
 import concurrent.futures
+import hashlib
+import requests
 from NorenRestApiPy.NorenApi import NorenApi
 
 class Order:
@@ -41,6 +43,35 @@ class FlattradeClient:
         self.api = NorenApiPy()
 
 
+
+
+    def generate_session_token(self, api_key, api_secret, auth_code):
+        try:
+            # Generate SHA256 hash
+            hash_string = f"{api_key}{auth_code}{api_secret}"
+            hashed_secret = hashlib.sha256(hash_string.encode()).hexdigest()
+
+            payload = {
+                "api_key": api_key,
+                "request_code": auth_code,
+                "api_secret": hashed_secret
+            }
+
+            response = requests.post("https://authapi.flattrade.in/trade/apitoken", json=payload)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("stat") == "Ok":
+                    # Flattrade returns the user ID as 'client' and session token as 'token'
+                    return data.get("client"), data.get("token")
+                else:
+                    self.last_api_error = data.get("emsg", "Unknown Error in Token Generation")
+                    return None, None
+            else:
+                self.last_api_error = f"HTTP {response.status_code}: {response.text}"
+                return None, None
+        except Exception as e:
+            self.last_api_error = f"Exception in token generation: {str(e)}"
+            return None, None
 
     def login(self, user_id, token):
         try:
