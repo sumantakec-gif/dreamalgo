@@ -53,7 +53,9 @@ with st.sidebar:
                 # Script Selection
 
 
+
                 selected_strike = 0
+                option = None
                 ltp = st.session_state.api.get_index_ltp(index_name)
                 if not ltp:
                     st.error(f"Could not fetch live price for {index_name}. Is market open/token correct?")
