@@ -38,7 +38,8 @@ class StrategyController:
     def fetch_and_calculate(self):
         # Fetch data since today's start
         today = datetime.now()
-        start_secs = str(int(today.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()))
+        from datetime import timedelta
+        start_secs = str(int((today - timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()))
 
         data = self.api.get_intraday_data(self.exchange, self.token, start_secs)
         if not data:
