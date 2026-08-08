@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import time
-import plotly.graph_objects as go
 from src.trading.api import FlattradeClient
 from src.trading.strategy import StrategyController
 from src.database.crud import get_trade_logs, get_order_reports, save_user_config, get_user_config
@@ -172,39 +171,67 @@ with st.sidebar:
 
 
 
+import plotly.graph_objects as go
+
 def render_chart(df):
     if df.empty:
         return go.Figure()
+
     fig = go.Figure(data=[go.Candlestick(x=df['timestamp'],
                 open=df['open'], high=df['high'],
-                low=df['low'], close=df['close'], name="Candles")])
-    if 'ema_9' in df:
-        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['ema_9'], mode='lines', name='9 EMA Close'))
-    if 'ema_25' in df:
-        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['ema_25'], mode='lines', name='25 EMA Close'))
-    if 'ema_50_low' in df:
-        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['ema_50_low'], mode='lines', name='50 EMA Low'))
-    if 'ema_250' in df:
-        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['ema_250'], mode='lines', name='250 EMA Close'))
-    if 'vwap' in df:
-        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['vwap'], mode='lines', name='VWAP'))
+                low=df['low'], close=df['close'], name="Candles",
+                increasing_line_color='#26a69a', decreasing_line_color='#ef5350')])
 
-    # Hide outside market hours (15:30 to 09:15) and weekends
+    if 'ema_9' in df:
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['ema_9'], mode='lines', line=dict(color='magenta', width=1.5), name='9 EMA Close'))
+    if 'ema_25' in df:
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['ema_25'], mode='lines', line=dict(color='green', width=1.5), name='25 EMA Close'))
+    if 'ema_50_low' in df:
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['ema_50_low'], mode='lines', line=dict(color='blue', width=1.5), name='50 EMA Low'))
+    if 'ema_250' in df:
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['ema_250'], mode='lines', line=dict(color='orange', width=2), name='250 EMA Close'))
+    if 'vwap' in df:
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['vwap'], mode='lines', line=dict(color='darkred', width=1.5), name='VWAP'))
+
+    # Hide outside market hours and weekends
     fig.update_xaxes(
         rangebreaks=[
             dict(bounds=["15:30", "09:15"]),
             dict(bounds=["sat", "mon"])
-        ]
+        ],
+        gridcolor='lightgray',
+        showgrid=True
     )
+
+    fig.update_yaxes(gridcolor='lightgray', showgrid=True)
 
     # Add vertical lines for new days
     df['date'] = df['timestamp'].dt.date
     new_days = df[df['date'] != df['date'].shift(1)]['timestamp']
     for nd in new_days:
-        fig.add_vline(x=nd, line_dash="dot", line_color="gray", opacity=0.5)
+        fig.add_vline(x=nd, line_dash="dash", line_color="blue", opacity=0.5, line_width=1)
 
-    # Set uirevision to preserve zoom/pan state when data updates
-    fig.update_layout(height=600, xaxis_rangeslider_visible=False, uirevision='constant', margin=dict(l=0, r=0, t=30, b=0))
+    # Add markers for crossovers (where position would trigger)
+    # We can detect historical crossovers for the chart
+    if 'ema_9' in df:
+        # Cross above
+        cross_up = df[(df['close'] > df['ema_9']) & (df['close'].shift(1) <= df['ema_9'].shift(1))]
+        if not cross_up.empty:
+            fig.add_trace(go.Scatter(x=cross_up['timestamp'], y=cross_up['close'], mode='markers', marker=dict(symbol='cross', size=12, color='black', line=dict(width=2, color='black')), name='Cross Up'))
+
+        # Cross below
+        cross_down = df[(df['close'] < df['ema_9']) & (df['close'].shift(1) >= df['ema_9'].shift(1))]
+        if not cross_down.empty:
+            fig.add_trace(go.Scatter(x=cross_down['timestamp'], y=cross_down['close'], mode='markers', marker=dict(symbol='cross', size=12, color='black', line=dict(width=2, color='black')), name='Cross Down'))
+
+    fig.update_layout(
+        height=700,
+        xaxis_rangeslider_visible=False,
+        uirevision='constant',
+        margin=dict(l=0, r=0, t=30, b=0),
+        plot_bgcolor='white',
+        paper_bgcolor='white'
+    )
     return fig
 
 
@@ -238,73 +265,63 @@ if st.session_state.show_settings:
 st.title("Flattrade Options Algo Trading")
 
 
-# We will handle the loop here instead of using st.rerun() globally if running
-if st.session_state.running and st.session_state.strategy:
-    # Get initial data
-    df = st.session_state.strategy.fetch_and_calculate()
+@st.fragment(run_every=5)
+def run_trading_loop():
+    if st.session_state.running and st.session_state.strategy:
+        df = st.session_state.strategy.fetch_and_calculate()
 
-    col1, col2 = st.columns([3, 1])
+        col1, col2 = st.columns([3, 1])
 
-    with col1:
-        chart_placeholder = st.empty()
-    with col2:
-        ltp_placeholder = st.empty()
-        pnl_placeholder = st.empty()
+        with col1:
+            if not df.empty:
+                st.session_state.strategy.evaluate_signals(df)
+                st.plotly_chart(render_chart(df), use_container_width=True, key="live_chart", config={"scrollZoom": True})
+            else:
+                st.warning("Waiting for candlestick data... (API might have returned empty data)")
 
-    logs_placeholder = st.empty()
-    reports_placeholder = st.empty()
+        with col2:
+            if not df.empty:
+                latest_close = df.iloc[-1]['close']
+                st.metric("Last Traded Price", f"₹ {latest_close:.2f}")
+                st.metric("Live Running P&L", f"₹ {st.session_state.strategy.running_pnl:.2f}")
+            else:
+                st.metric("Last Traded Price", "---")
+                st.metric("Live Running P&L", "---")
 
-    if not df.empty:
-        st.session_state.strategy.evaluate_signals(df)
+        logs = get_trade_logs(20)
+        if logs:
+            log_data = [{"Time": l.timestamp, "Message": l.message} for l in logs]
+            st.dataframe(pd.DataFrame(log_data), use_container_width=True)
 
-        # Update placeholders
-        chart_placeholder.plotly_chart(render_chart(df), use_container_width=True, key="live_chart", config={"scrollZoom": True})
-
-        latest_close = df.iloc[-1]['close']
-        ltp_placeholder.metric("Last Traded Price", f"₹ {latest_close:.2f}")
-        pnl_placeholder.metric("Live Running P&L", f"₹ {st.session_state.strategy.running_pnl:.2f}")
+        reports = get_order_reports()
+        if reports:
+            rep_df = pd.DataFrame([{
+                "Symbol": r.symbol, "ExpDate": r.exp_date, "StrikePrice": r.strike_price, "OpType": r.op_type,
+                "BuySell": r.buy_sell, "Qty": r.qty, "Price": r.price, "TradeQty": r.trade_qty,
+                "AvgPrice": r.avg_price, "TimeStamp": r.timestamp, "Points": r.points,
+                "Amount": r.amount, "Running P&L": r.running_pnl, "Gain %": r.gain_percent,
+                "Invested Amount": r.invested_amount
+            } for r in reports])
+            st.dataframe(rep_df, use_container_width=True)
     else:
-        chart_placeholder.warning("Waiting for candlestick data... (API might have returned empty data)")
+        st.info("System is ready. Start the bot from the sidebar to begin trading.")
 
-    logs = get_trade_logs(20)
-    if logs:
-        log_data = [{"Time": l.timestamp, "Message": l.message} for l in logs]
-        logs_placeholder.dataframe(pd.DataFrame(log_data), use_container_width=True)
+        st.subheader("Trade Logs")
+        logs = get_trade_logs(20)
+        if logs:
+            log_data = [{"Time": l.timestamp, "Message": l.message} for l in logs]
+            st.dataframe(pd.DataFrame(log_data), use_container_width=True)
 
-    reports = get_order_reports()
-    if reports:
-        rep_df = pd.DataFrame([{
-            "Symbol": r.symbol, "ExpDate": r.exp_date, "StrikePrice": r.strike_price, "OpType": r.op_type,
-            "BuySell": r.buy_sell, "Qty": r.qty, "Price": r.price, "TradeQty": r.trade_qty,
-            "AvgPrice": r.avg_price, "TimeStamp": r.timestamp, "Points": r.points,
-            "Amount": r.amount, "Running P&L": r.running_pnl, "Gain %": r.gain_percent,
-            "Invested Amount": r.invested_amount
-        } for r in reports])
-        reports_placeholder.dataframe(rep_df, use_container_width=True)
+        st.subheader("Order Reports")
+        reports = get_order_reports()
+        if reports:
+            rep_df = pd.DataFrame([{
+                "Symbol": r.symbol, "ExpDate": r.exp_date, "StrikePrice": r.strike_price, "OpType": r.op_type,
+                "BuySell": r.buy_sell, "Qty": r.qty, "Price": r.price, "TradeQty": r.trade_qty,
+                "AvgPrice": r.avg_price, "TimeStamp": r.timestamp, "Points": r.points,
+                "Amount": r.amount, "Running P&L": r.running_pnl, "Gain %": r.gain_percent,
+                "Invested Amount": r.invested_amount
+            } for r in reports])
+            st.dataframe(rep_df, use_container_width=True)
 
-    time.sleep(5)
-    st.rerun()
-else:
-    # Just render static placeholders if not running
-    chart_placeholder = st.empty()
-    pnl_placeholder = st.empty()
-    logs_placeholder = st.empty()
-    reports_placeholder = st.empty()
-
-    st.subheader("Trade Logs")
-    logs = get_trade_logs(20)
-    if logs:
-        log_data = [{"Time": l.timestamp, "Message": l.message} for l in logs]
-        logs_placeholder.dataframe(pd.DataFrame(log_data), use_container_width=True)
-
-    st.subheader("Order Reports")
-    reports = get_order_reports()
-    if reports:
-        rep_df = pd.DataFrame([{
-            "Symbol": r.symbol, "ExpDate": r.exp_date, "StrikePrice": r.strike_price, "OpType": r.op_type,
-            "BuySell": r.buy_sell, "Qty": r.qty, "Price": r.price, "TradeQty": r.trade_qty,
-            "AvgPrice": r.avg_price, "TimeStamp": r.timestamp, "Points": r.points,
-            "Amount": r.amount, "Running P&L": r.running_pnl, "Gain %": r.gain_percent,
-            "Invested Amount": r.invested_amount
-        } for r in reports])
-        reports_placeholder.dataframe(rep_df, use_container_width=True)
+run_trading_loop()
