@@ -192,7 +192,7 @@ class FlattradeClient:
 
 
 
-    def get_nearest_expiry_option(self, index_name, opt_type, strike_price):
+    def get_nearest_expiry_option(self, index_name, opt_type, strike_price, min_price=None, max_price=None):
         strike_int = int(float(strike_price))
         exch = 'NFO' if index_name.lower() == 'nifty' else 'BFO'
         search_txt = f"{'NIFTY' if index_name.lower() == 'nifty' else 'SENSEX'} {strike_int} {opt_type}"
@@ -202,7 +202,7 @@ class FlattradeClient:
             underlying_tsym = 'NIFTY' if index_name.lower() == 'nifty' else 'SENSEX'
             underlying_exch = 'NSE' if index_name.lower() == 'nifty' else 'BSE'
             self.log(f"Calling get_option_chain({underlying_exch}, {underlying_tsym}, {strike_price})")
-            ret = self.api.get_option_chain(exchange=underlying_exch, tradingsymbol=underlying_tsym, strikeprice=strike_price, count=5)
+            ret = self.api.get_option_chain(exchange=underlying_exch, tradingsymbol=underlying_tsym, strikeprice=strike_price, count=25)
             self.log(f"get_option_chain response: {ret}")
 
             if ret and ret.get('stat') == 'Ok':
@@ -210,9 +210,19 @@ class FlattradeClient:
                 options = [v for v in values if v.get('optt') == opt_type.upper()]
                 if options:
                     options.sort(key=lambda x: abs(float(x.get('strprc', 0)) - strike_price))
+                    for opt in options:
+                        if min_price is not None and max_price is not None:
+                            # check ltp
+                            self.log(f"Fetching LTP for {opt['tsym']} to check price bounds")
+                            q = self.api.get_quotes(exchange=opt['exch'], token=opt['token'])
+                            if q and q.get('stat') == 'Ok' and 'lp' in q:
+                                lp = float(q['lp'])
+                                if min_price <= lp <= max_price:
+                                    return opt
+                        else:
+                            return opt
 
-                    return options[0]
-
+            # fallback
             self.log(f"Calling searchscrip({exch}, '{search_txt}')")
             ret_search = self.api.searchscrip(exchange=exch, searchtext=search_txt)
             self.log(f"searchscrip response: {ret_search}")

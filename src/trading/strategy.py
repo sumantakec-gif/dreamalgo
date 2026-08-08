@@ -82,20 +82,30 @@ class StrategyController:
         return self.calculate_indicators(df)
 
     def evaluate_signals(self, df):
-        if len(df) < 2 or 'ema_9' not in df.columns:
+        if len(df) < 3 or 'ema_9' not in df.columns:
             return
 
-        current_candle = df.iloc[-1]
-        close_price = current_candle['close']
-        ema_9 = current_candle['ema_9']
+        # Use the last fully closed candle for evaluation
+        closed_candle = df.iloc[-2]
+        prev_candle = df.iloc[-3]
 
-        if pd.isna(ema_9):
+        close_price = closed_candle['close']
+        ema_9 = closed_candle['ema_9']
+
+        prev_close = prev_candle['close']
+        prev_ema_9 = prev_candle['ema_9']
+
+        if pd.isna(ema_9) or pd.isna(prev_ema_9):
             return
 
         if self.position == 0:
-            if self.mode == 'BUY' and close_price > ema_9:
+            # We want an actual crossover to prevent rapid re-entries
+            buy_signal = (prev_close <= prev_ema_9) and (close_price > ema_9)
+            sell_signal = (prev_close >= prev_ema_9) and (close_price < ema_9)
+
+            if self.mode == 'BUY' and buy_signal:
                 self.execute_trade('BUY', float(close_price))
-            elif self.mode == 'SELL' and close_price < ema_9:
+            elif self.mode == 'SELL' and sell_signal:
                 self.execute_trade('SELL', float(close_price))
         else:
             # Check Stoploss or Target based on EMA
@@ -104,12 +114,13 @@ class StrategyController:
             elif self.mode == 'SELL' and close_price > ema_9:
                 self.execute_trade('BUY', float(close_price), reason="EMA SL")
             else:
-                # Check fixed points Target/SL
-                pnl_pts = (close_price - self.entry_price) if self.mode == 'BUY' else (self.entry_price - close_price)
+                # Check fixed points Target/SL using the current live price (we can use live price for target/sl)
+                live_price = df.iloc[-1]['close']
+                pnl_pts = (live_price - self.entry_price) if self.mode == 'BUY' else (self.entry_price - live_price)
                 if self.target_pts > 0 and pnl_pts >= self.target_pts:
-                    self.execute_trade('SELL' if self.mode == 'BUY' else 'BUY', float(close_price), reason="TARGET")
+                    self.execute_trade('SELL' if self.mode == 'BUY' else 'BUY', float(live_price), reason="TARGET")
                 elif self.sl_pts > 0 and pnl_pts <= -self.sl_pts:
-                    self.execute_trade('SELL' if self.mode == 'BUY' else 'BUY', float(close_price), reason="SL")
+                    self.execute_trade('SELL' if self.mode == 'BUY' else 'BUY', float(live_price), reason="SL")
 
     def execute_trade(self, action, price, reason="ENTRY"):
         resp = self.api.place_order(action[0], self.exchange, self.symbol, self.qty, price, is_paper=self.is_paper)

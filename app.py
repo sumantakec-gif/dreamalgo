@@ -154,7 +154,7 @@ with st.sidebar:
 
 
                     st.info(f"Searching option: {index_name}, {opt_type}, strike={selected_strike}")
-                    option = st.session_state.api.get_nearest_expiry_option(index_name, opt_type, selected_strike)
+                    option = st.session_state.api.get_nearest_expiry_option(index_name, opt_type, selected_strike, lot_price_min, lot_price_max)
                     if not option:
                         st.error(f"Search failed. Last API Debug: {st.session_state.api.last_debug_info}")
 
@@ -188,7 +188,23 @@ def render_chart(df):
         fig.add_trace(go.Scatter(x=df['timestamp'], y=df['ema_250'], mode='lines', name='250 EMA Close'))
     if 'vwap' in df:
         fig.add_trace(go.Scatter(x=df['timestamp'], y=df['vwap'], mode='lines', name='VWAP'))
-    fig.update_layout(height=600, xaxis_rangeslider_visible=False)
+
+    # Hide outside market hours (15:30 to 09:15) and weekends
+    fig.update_xaxes(
+        rangebreaks=[
+            dict(bounds=["15:30", "09:15"]),
+            dict(bounds=["sat", "mon"])
+        ]
+    )
+
+    # Add vertical lines for new days
+    df['date'] = df['timestamp'].dt.date
+    new_days = df[df['date'] != df['date'].shift(1)]['timestamp']
+    for nd in new_days:
+        fig.add_vline(x=nd, line_dash="dot", line_color="gray", opacity=0.5)
+
+    # Set uirevision to preserve zoom/pan state when data updates
+    fig.update_layout(height=600, xaxis_rangeslider_visible=False, uirevision='constant', margin=dict(l=0, r=0, t=30, b=0))
     return fig
 
 
@@ -242,7 +258,7 @@ if st.session_state.running and st.session_state.strategy:
         st.session_state.strategy.evaluate_signals(df)
 
         # Update placeholders
-        chart_placeholder.plotly_chart(render_chart(df), use_container_width=True, key=f"chart_{int(time.time())}")
+        chart_placeholder.plotly_chart(render_chart(df), use_container_width=True, key="live_chart", config={"scrollZoom": True})
 
         latest_close = df.iloc[-1]['close']
         ltp_placeholder.metric("Last Traded Price", f"₹ {latest_close:.2f}")
