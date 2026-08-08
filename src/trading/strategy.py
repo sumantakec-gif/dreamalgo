@@ -5,7 +5,8 @@ from datetime import datetime
 from src.database.crud import insert_candlestick, insert_trade_log, insert_order_report
 
 class StrategyController:
-    def __init__(self, api_client, symbol, token, exchange, mode, is_paper, qty, investment_amount, target_pts, sl_pts):
+    def __init__(self, api_client, symbol, token, exchange, mode, is_paper, qty, investment_amount, target_pts, sl_pts, interval=1):
+        self.interval = interval
         self.api = api_client
         self.symbol = symbol
         self.token = token
@@ -25,10 +26,10 @@ class StrategyController:
         if len(df) < 1:
             return df
 
-        df['ema_9'] = ta.trend.EMAIndicator(close=df['close'], window=9).ema_indicator()
-        df['ema_25'] = ta.trend.EMAIndicator(close=df['close'], window=25).ema_indicator()
-        df['ema_50_low'] = ta.trend.EMAIndicator(close=df['low'], window=50).ema_indicator()
-        df['ema_250'] = ta.trend.EMAIndicator(close=df['close'], window=250).ema_indicator()
+        if len(df) >= 9: df['ema_9'] = ta.trend.EMAIndicator(close=df['close'], window=9).ema_indicator()
+        if len(df) >= 25: df['ema_25'] = ta.trend.EMAIndicator(close=df['close'], window=25).ema_indicator()
+        if len(df) >= 50: df['ema_50_low'] = ta.trend.EMAIndicator(close=df['low'], window=50).ema_indicator()
+        if len(df) >= 250: df['ema_250'] = ta.trend.EMAIndicator(close=df['close'], window=250).ema_indicator()
         df['vwap'] = ta.volume.VolumeWeightedAveragePrice(
             high=df['high'], low=df['low'], close=df['close'], volume=df['volume']
         ).volume_weighted_average_price()
@@ -39,9 +40,9 @@ class StrategyController:
         # Fetch data since today's start
         today = datetime.now()
         from datetime import timedelta
-        start_secs = str(int((today - timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()))
+        start_secs = str(int((today - timedelta(days=5)).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()))
 
-        data = self.api.get_intraday_data(self.exchange, self.token, start_secs)
+        data = self.api.get_intraday_data(self.exchange, self.token, start_secs, self.interval)
         if not data:
             return pd.DataFrame()
 

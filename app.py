@@ -111,8 +111,20 @@ with st.sidebar:
 
     index_name = st.selectbox("Index", ["NIFTY", "SENSEX"])
     opt_type = st.selectbox("Option Type (CE/PE)", ["CE", "PE"])
-    strike_selection = st.selectbox("Strike Selection", ["ATM", "OTM Range"])
-    otm_range = st.number_input("OTM Range Offset (Points)", value=100) if strike_selection == "OTM Range" else 0
+
+    # Generate Spot options from -20 to +20
+    spot_options = ["ATM"]
+    for i in range(1, 21):
+        spot_options.append(f"Spot +{i}")
+    for i in range(1, 21):
+        spot_options.append(f"Spot -{i}")
+
+    strike_selection = st.selectbox("Strike Selection", spot_options)
+
+    chart_interval = st.selectbox("Chart Timeframe", ["1 Min", "3 Min", "5 Min"])
+    interval_map = {"1 Min": 1, "3 Min": 3, "5 Min": 5}
+    interval_val = interval_map[chart_interval]
+
     lot_price_min = st.number_input("Lot Price Min", value=50.0)
     lot_price_max = st.number_input("Lot Price Max", value=200.0)
     mode = st.selectbox("Mode", ["BUY", "SELL"])
@@ -148,8 +160,15 @@ with st.sidebar:
                         selected_strike = atm_strike
                         st.info(f"ATM Selected: {selected_strike} (LTP: {ltp})")
                     else:
-                        selected_strike = atm_strike + otm_range if opt_type == 'CE' else atm_strike - otm_range
-                        st.info(f"OTM Selected: {selected_strike} (LTP: {ltp})")
+                        # Extract the offset (e.g., "+1" or "-2")
+                        offset_str = strike_selection.split(" ")[1]
+                        offset = int(offset_str)
+                        # CE and PE move in opposite directions for strike selection
+                        if opt_type == 'CE':
+                            selected_strike = atm_strike + (offset * round_val)
+                        else:
+                            selected_strike = atm_strike - (offset * round_val)
+                        st.info(f"{strike_selection} Selected: {selected_strike} (LTP: {ltp})")
 
 
                     st.info(f"Searching option: {index_name}, {opt_type}, strike={selected_strike}")
@@ -162,7 +181,7 @@ with st.sidebar:
                     st.success(f"Selected Script: {option['tsym']}")
                     st.session_state.strategy = StrategyController(
                         st.session_state.api, option['tsym'], option['token'], option['exch'],
-                        mode, is_paper, qty, investment, target_pts, sl_pts
+                        mode, is_paper, qty, investment, target_pts, sl_pts, interval_val
                     )
                 else:
                     st.error("Could not find matching option script.")
@@ -174,7 +193,7 @@ with st.sidebar:
 from streamlit_lightweight_charts import renderLightweightCharts
 import json
 
-def render_chart(df):
+def render_chart(df, script_name='Options Algo Chart'):
     if df.empty:
         return None
 
@@ -202,6 +221,14 @@ def render_chart(df):
                 "type": 'solid',
                 "color": 'white'
             }
+        },
+        "watermark": {
+            "color": 'rgba(0, 0, 0, 0.1)',
+            "visible": True,
+            "text": script_name,
+            "fontSize": 48,
+            "horzAlign": 'center',
+            "vertAlign": 'center',
         },
         "timeScale": {
             "timeVisible": True,
@@ -266,27 +293,38 @@ def render_chart(df):
         })
 
     # Markers for crossovers
-    if 'ema_9' in df:
-        cross_up = df[(df['close'] > df['ema_9']) & (df['close'].shift(1) <= df['ema_9'].shift(1))]
-        cross_down = df[(df['close'] < df['ema_9']) & (df['close'].shift(1) >= df['ema_9'].shift(1))]
-
+    if 'ema_9' in plot_df:
         markers = []
-        for idx, row in cross_up.iterrows():
-            markers.append({
-                "time": int(row['timestamp'].timestamp()),
-                "position": "belowBar",
-                "color": "green",
-                "shape": "arrowUp",
-                "text": "Buy"
-            })
-        for idx, row in cross_down.iterrows():
-            markers.append({
-                "time": int(row['timestamp'].timestamp()),
-                "position": "aboveBar",
-                "color": "red",
-                "shape": "arrowDown",
-                "text": "Sell"
-            })
+        # Calculate exactly based on last fully closed candle logic
+        # Buy: prev_close <= prev_ema9 AND current_close > current_ema9
+        # Sell: prev_close >= prev_ema9 AND current_close < current_ema9
+
+        for i in range(1, len(plot_df)):
+            prev_row = plot_df.iloc[i-1]
+            curr_row = plot_df.iloc[i]
+
+            if pd.isna(prev_row['ema_9']) or pd.isna(curr_row['ema_9']):
+                continue
+
+            is_buy = prev_row['close'] <= prev_row['ema_9'] and curr_row['close'] > curr_row['ema_9']
+            is_sell = prev_row['close'] >= prev_row['ema_9'] and curr_row['close'] < curr_row['ema_9']
+
+            if is_buy:
+                markers.append({
+                    "time": int(curr_row['time']),
+                    "position": "belowBar",
+                    "color": "green",
+                    "shape": "arrowUp",
+                    "text": "Buy"
+                })
+            elif is_sell:
+                markers.append({
+                    "time": int(curr_row['time']),
+                    "position": "aboveBar",
+                    "color": "red",
+                    "shape": "arrowDown",
+                    "text": "Sell"
+                })
 
         if markers:
             seriesCandlestickChart[0]["markers"] = markers
@@ -339,7 +377,7 @@ def run_trading_loop():
         with col1:
             if not df.empty:
                 st.session_state.strategy.evaluate_signals(df)
-                chart_options = render_chart(df)
+                chart_options = render_chart(df, st.session_state.strategy.symbol)
                 if chart_options:
                     renderLightweightCharts(chart_options, 'live_chart')
             else:

@@ -240,10 +240,10 @@ class FlattradeClient:
             logging.error(f"Error fetching option chain: {e}")
         return None
 
-    def get_intraday_data(self, exchange, token, start_time):
+    def get_intraday_data(self, exchange, token, start_time, interval=1):
         try:
             self.log(f"Fetching intraday data for token={token}, start={start_time}")
-            ret = self.api.get_time_price_series(exchange=exchange, token=token, starttime=str(start_time), interval=1)
+            ret = self.api.get_time_price_series(exchange=exchange, token=token, starttime=str(start_time), interval=interval)
             self.log(f"get_time_price_series returned: {ret}")
             if isinstance(ret, list) and len(ret) > 0 and ret[0].get('stat') == 'Ok':
                 return ret
