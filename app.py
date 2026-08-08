@@ -171,68 +171,132 @@ with st.sidebar:
 
 
 
-import plotly.graph_objects as go
+from streamlit_lightweight_charts import renderLightweightCharts
+import json
 
 def render_chart(df):
     if df.empty:
-        return go.Figure()
+        return None
 
-    fig = go.Figure(data=[go.Candlestick(x=df['timestamp'],
-                open=df['open'], high=df['high'],
-                low=df['low'], close=df['close'], name="Candles",
-                increasing_line_color='#26a69a', decreasing_line_color='#ef5350')])
+    # Format data for Lightweight Charts
+    # Time must be string in YYYY-MM-DD format (or UNIX timestamp)
+    chart_data = []
 
+    # Keep only columns we need and drop NaNs for the chart
+    plot_df = df[['timestamp', 'open', 'high', 'low', 'close']].copy()
+    if 'ema_9' in df: plot_df['ema_9'] = df['ema_9']
+    if 'ema_25' in df: plot_df['ema_25'] = df['ema_25']
+    if 'ema_50_low' in df: plot_df['ema_50_low'] = df['ema_50_low']
+    if 'ema_250' in df: plot_df['ema_250'] = df['ema_250']
+    if 'vwap' in df: plot_df['vwap'] = df['vwap']
+
+    # We use UNIX timestamps so exact minute is preserved correctly
+    plot_df['time'] = plot_df['timestamp'].astype('int64') // 10**9
+
+    candles = plot_df[['time', 'open', 'high', 'low', 'close']].to_dict('records')
+
+    chartOptions = {
+        "layout": {
+            "textColor": 'black',
+            "background": {
+                "type": 'solid',
+                "color": 'white'
+            }
+        },
+        "timeScale": {
+            "timeVisible": True,
+            "secondsVisible": False,
+        },
+        "crosshair": {
+            "mode": 1 # Normal mode
+        }
+    }
+
+    seriesCandlestickChart = [{
+        "type": 'Candlestick',
+        "data": candles,
+        "options": {
+            "upColor": '#26a69a',
+            "downColor": '#ef5350',
+            "borderVisible": False,
+            "wickUpColor": '#26a69a',
+            "wickDownColor": '#ef5350'
+        }
+    }]
+
+    # Add indicators if they exist
+    if 'ema_9' in plot_df:
+        ema9_data = plot_df[['time', 'ema_9']].rename(columns={'ema_9': 'value'}).dropna().to_dict('records')
+        seriesCandlestickChart.append({
+            "type": 'Line',
+            "data": ema9_data,
+            "options": {"color": 'magenta', "lineWidth": 1.5, "title": "9 EMA"}
+        })
+
+    if 'ema_25' in plot_df:
+        ema25_data = plot_df[['time', 'ema_25']].rename(columns={'ema_25': 'value'}).dropna().to_dict('records')
+        seriesCandlestickChart.append({
+            "type": 'Line',
+            "data": ema25_data,
+            "options": {"color": 'green', "lineWidth": 1.5, "title": "25 EMA"}
+        })
+
+    if 'ema_50_low' in plot_df:
+        ema50_data = plot_df[['time', 'ema_50_low']].rename(columns={'ema_50_low': 'value'}).dropna().to_dict('records')
+        seriesCandlestickChart.append({
+            "type": 'Line',
+            "data": ema50_data,
+            "options": {"color": 'blue', "lineWidth": 1.5, "title": "50 EMA Low"}
+        })
+
+    if 'ema_250' in plot_df:
+        ema250_data = plot_df[['time', 'ema_250']].rename(columns={'ema_250': 'value'}).dropna().to_dict('records')
+        seriesCandlestickChart.append({
+            "type": 'Line',
+            "data": ema250_data,
+            "options": {"color": 'orange', "lineWidth": 2, "title": "250 EMA"}
+        })
+
+    if 'vwap' in plot_df:
+        vwap_data = plot_df[['time', 'vwap']].rename(columns={'vwap': 'value'}).dropna().to_dict('records')
+        seriesCandlestickChart.append({
+            "type": 'Line',
+            "data": vwap_data,
+            "options": {"color": 'darkred', "lineWidth": 1.5, "title": "VWAP"}
+        })
+
+    # Markers for crossovers
     if 'ema_9' in df:
-        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['ema_9'], mode='lines', line=dict(color='magenta', width=1.5), name='9 EMA Close'))
-    if 'ema_25' in df:
-        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['ema_25'], mode='lines', line=dict(color='green', width=1.5), name='25 EMA Close'))
-    if 'ema_50_low' in df:
-        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['ema_50_low'], mode='lines', line=dict(color='blue', width=1.5), name='50 EMA Low'))
-    if 'ema_250' in df:
-        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['ema_250'], mode='lines', line=dict(color='orange', width=2), name='250 EMA Close'))
-    if 'vwap' in df:
-        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['vwap'], mode='lines', line=dict(color='darkred', width=1.5), name='VWAP'))
-
-    # Hide outside market hours and weekends
-    fig.update_xaxes(
-        rangebreaks=[
-            dict(bounds=["15:30", "09:15"]),
-            dict(bounds=["sat", "mon"])
-        ],
-        gridcolor='lightgray',
-        showgrid=True
-    )
-
-    fig.update_yaxes(gridcolor='lightgray', showgrid=True)
-
-    # Add vertical lines for new days
-    df['date'] = df['timestamp'].dt.date
-    new_days = df[df['date'] != df['date'].shift(1)]['timestamp']
-    for nd in new_days:
-        fig.add_vline(x=nd, line_dash="dash", line_color="blue", opacity=0.5, line_width=1)
-
-    # Add markers for crossovers (where position would trigger)
-    # We can detect historical crossovers for the chart
-    if 'ema_9' in df:
-        # Cross above
         cross_up = df[(df['close'] > df['ema_9']) & (df['close'].shift(1) <= df['ema_9'].shift(1))]
-        if not cross_up.empty:
-            fig.add_trace(go.Scatter(x=cross_up['timestamp'], y=cross_up['close'], mode='markers', marker=dict(symbol='cross', size=12, color='black', line=dict(width=2, color='black')), name='Cross Up'))
-
-        # Cross below
         cross_down = df[(df['close'] < df['ema_9']) & (df['close'].shift(1) >= df['ema_9'].shift(1))]
-        if not cross_down.empty:
-            fig.add_trace(go.Scatter(x=cross_down['timestamp'], y=cross_down['close'], mode='markers', marker=dict(symbol='cross', size=12, color='black', line=dict(width=2, color='black')), name='Cross Down'))
 
-    fig.update_layout(
-        height=700,
-        xaxis_rangeslider_visible=False,
-        uirevision='constant',
-        margin=dict(l=0, r=0, t=30, b=0),
-        plot_bgcolor='white',
-        paper_bgcolor='white'
-    )
-    return fig
+        markers = []
+        for idx, row in cross_up.iterrows():
+            markers.append({
+                "time": int(row['timestamp'].timestamp()),
+                "position": "belowBar",
+                "color": "green",
+                "shape": "arrowUp",
+                "text": "Buy"
+            })
+        for idx, row in cross_down.iterrows():
+            markers.append({
+                "time": int(row['timestamp'].timestamp()),
+                "position": "aboveBar",
+                "color": "red",
+                "shape": "arrowDown",
+                "text": "Sell"
+            })
+
+        if markers:
+            seriesCandlestickChart[0]["markers"] = markers
+
+    return [
+        {
+            "chart": chartOptions,
+            "series": seriesCandlestickChart
+        }
+    ]
 
 
 st.subheader("System Logs (Live API Debug)")
@@ -275,7 +339,9 @@ def run_trading_loop():
         with col1:
             if not df.empty:
                 st.session_state.strategy.evaluate_signals(df)
-                st.plotly_chart(render_chart(df), use_container_width=True, key="live_chart", config={"scrollZoom": True})
+                chart_options = render_chart(df)
+                if chart_options:
+                    renderLightweightCharts(chart_options, 'live_chart')
             else:
                 st.warning("Waiting for candlestick data... (API might have returned empty data)")
 
