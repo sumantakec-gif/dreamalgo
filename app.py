@@ -393,7 +393,7 @@ def run_trading_loop():
                 if chart_options:
                     renderLightweightCharts(chart_options, 'live_chart')
             else:
-                st.warning("Waiting for candlestick data... (API might have returned empty data)")
+                st.warning(f"Waiting for candlestick data... (API returned empty data for token {st.session_state.strategy.token})")
 
         with col2:
             if not df.empty:

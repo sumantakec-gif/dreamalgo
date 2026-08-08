@@ -44,6 +44,7 @@ class StrategyController:
 
         data = self.api.get_intraday_data(self.exchange, self.token, start_secs, self.interval)
         if not data:
+            self.api.log(f"WARNING: get_intraday_data returned empty for token {self.token} starting at {start_secs}")
             return pd.DataFrame()
 
         # Parse data
