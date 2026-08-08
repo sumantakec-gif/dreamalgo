@@ -93,6 +93,7 @@ with st.sidebar:
                         st.error(f"Login validation failed! API Error: {st.session_state.api.last_api_error}")
                 else:
                     st.error(f"Token Generation failed! API Error: {st.session_state.api.last_api_error}")
+                    st.query_params.clear()
 
     else:
         st.success("Broker Connected ✅")

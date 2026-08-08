@@ -111,9 +111,6 @@ class FlattradeClient:
         except Exception as e:
             self.last_api_error = str(e)
             return False
-        except Exception as e:
-            self.last_api_error = str(e)
-            return False
 
     def generate_session_token(self, api_key, api_secret, auth_code):
         try:
