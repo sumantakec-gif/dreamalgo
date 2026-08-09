@@ -56,6 +56,11 @@ if 'strategy' not in st.session_state:
     st.session_state.strategy = None
 if 'running' not in st.session_state:
     st.session_state.running = False
+if 'show_ema_9' not in st.session_state: st.session_state.show_ema_9 = True
+if 'show_ema_25' not in st.session_state: st.session_state.show_ema_25 = True
+if 'show_ema_50' not in st.session_state: st.session_state.show_ema_50 = True
+if 'show_ema_250' not in st.session_state: st.session_state.show_ema_250 = True
+if 'show_vwap' not in st.session_state: st.session_state.show_vwap = True
 
 # Attempt to auto-login from cached file if not already logged in
 if 'logged_in' not in st.session_state:
@@ -187,7 +192,7 @@ with st.sidebar:
 from streamlit_lightweight_charts import renderLightweightCharts
 import json
 
-def render_chart(df, script_name='Options Algo Chart'):
+def render_chart(df, script_name='Options Algo Chart', timeframe='1 Min'):
     if df.empty:
         return None
 
@@ -245,8 +250,8 @@ def render_chart(df, script_name='Options Algo Chart'):
         }
     }]
 
-    # Add indicators if they exist
-    if 'ema_9' in plot_df:
+    # Add indicators if they exist and are enabled
+    if 'ema_9' in plot_df and st.session_state.show_ema_9:
         ema9_data = plot_df[['time', 'ema_9']].rename(columns={'ema_9': 'value'}).dropna().to_dict('records')
         seriesCandlestickChart.append({
             "type": 'Line',
@@ -254,7 +259,7 @@ def render_chart(df, script_name='Options Algo Chart'):
             "options": {"color": 'magenta', "lineWidth": 1.5, "title": "9 EMA"}
         })
 
-    if 'ema_25' in plot_df:
+    if 'ema_25' in plot_df and st.session_state.show_ema_25:
         ema25_data = plot_df[['time', 'ema_25']].rename(columns={'ema_25': 'value'}).dropna().to_dict('records')
         seriesCandlestickChart.append({
             "type": 'Line',
@@ -262,7 +267,7 @@ def render_chart(df, script_name='Options Algo Chart'):
             "options": {"color": 'green', "lineWidth": 1.5, "title": "25 EMA"}
         })
 
-    if 'ema_50_low' in plot_df:
+    if 'ema_50_low' in plot_df and st.session_state.show_ema_50:
         ema50_data = plot_df[['time', 'ema_50_low']].rename(columns={'ema_50_low': 'value'}).dropna().to_dict('records')
         seriesCandlestickChart.append({
             "type": 'Line',
@@ -270,7 +275,7 @@ def render_chart(df, script_name='Options Algo Chart'):
             "options": {"color": 'blue', "lineWidth": 1.5, "title": "50 EMA Low"}
         })
 
-    if 'ema_250' in plot_df:
+    if 'ema_250' in plot_df and st.session_state.show_ema_250:
         ema250_data = plot_df[['time', 'ema_250']].rename(columns={'ema_250': 'value'}).dropna().to_dict('records')
         seriesCandlestickChart.append({
             "type": 'Line',
@@ -278,7 +283,7 @@ def render_chart(df, script_name='Options Algo Chart'):
             "options": {"color": 'orange', "lineWidth": 2, "title": "250 EMA"}
         })
 
-    if 'vwap' in plot_df:
+    if 'vwap' in plot_df and st.session_state.show_vwap:
         vwap_data = plot_df[['time', 'vwap']].rename(columns={'vwap': 'value'}).dropna().to_dict('records')
         seriesCandlestickChart.append({
             "type": 'Line',
@@ -375,10 +380,29 @@ def run_trading_loop(selected_option):
 
         col1, col2 = st.columns([3, 1])
         with col1:
+            # We add a small custom HTML overlay to serve as a custom legend
+
             if not df.empty:
                 if not is_view_only:
                     strat.evaluate_signals(df)
-                chart_options = render_chart(df, strat.symbol)
+
+                # Render checkboxes above chart
+                c_leg = st.columns(6)
+                with c_leg[0]:
+                    st.markdown(f"**{strat.symbol}**")
+                    st.markdown(f"**{chart_interval}**")
+                with c_leg[1]:
+                    st.session_state.show_ema_9 = st.checkbox("9 EMA", value=st.session_state.show_ema_9)
+                with c_leg[2]:
+                    st.session_state.show_ema_25 = st.checkbox("25 EMA", value=st.session_state.show_ema_25)
+                with c_leg[3]:
+                    st.session_state.show_ema_50 = st.checkbox("50 EMA L", value=st.session_state.show_ema_50)
+                with c_leg[4]:
+                    st.session_state.show_ema_250 = st.checkbox("250 EMA", value=st.session_state.show_ema_250)
+                with c_leg[5]:
+                    st.session_state.show_vwap = st.checkbox("VWAP", value=st.session_state.show_vwap)
+
+                chart_options = render_chart(df, strat.symbol, chart_interval)
                 if chart_options:
                     renderLightweightCharts(chart_options, 'live_chart')
             else:
