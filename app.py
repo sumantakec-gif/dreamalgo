@@ -95,7 +95,7 @@ with col_c2:
     opt_type = st.selectbox("Option Type (CE/PE)", ["CE", "PE"])
 
 with col_c3:
-    expiry_options = ["Current Expiry", "Next Expiry"]
+    expiry_options = ["Login to fetch expiries"]
     if st.session_state.logged_in and ltp:
         available_expiries = st.session_state.api.get_available_expiries(index_name)
         if available_expiries:
@@ -193,7 +193,9 @@ with st.sidebar:
         except ValueError:
             round_val = 50 if index_name == 'NIFTY' else 100
             atm_strike = round(ltp / round_val) * round_val
-            if strike_selection == "ATM":
+            if "Login" in strike_selection:
+                selected_strike = atm_strike
+            elif strike_selection == "ATM":
                 selected_strike = atm_strike
             else:
                 offset_str = strike_selection.split(" ")[1]

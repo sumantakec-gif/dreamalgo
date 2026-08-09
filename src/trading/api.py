@@ -201,17 +201,31 @@ class FlattradeClient:
         underlying_tsym = 'NIFTY' if index_name.lower() == 'nifty' else 'SENSEX'
 
         try:
+            # Flattrade get_option_chain fails silently for NFO, so we must use searchscrip as a fallback
             ret = self.api.get_option_chain(exchange=underlying_exch, tradingsymbol=underlying_tsym, strikeprice=str(atm), count=25)
+
+            expiries = set()
             if ret and ret.get('stat') == 'Ok':
                 values = ret.get('values', [])
-                expiries = set()
                 for v in values:
                     if 'exd' in v:
                         expiries.add(v['exd'])
-                if expiries:
-                    import datetime
-                    sorted_exp = sorted(list(expiries), key=lambda x: datetime.datetime.strptime(x, '%d-%b-%Y'))
-                    return sorted_exp
+
+            if not expiries:
+                exch = 'NFO' if index_name.lower() == 'nifty' else 'BFO'
+                search_txt = f"{'NIFTY' if index_name.lower() == 'nifty' else 'SENSEX'} {atm} CE"
+                self.log(f"Fallback searchscrip({exch}, '{search_txt}') to fetch expiries")
+                ret_search = self.api.searchscrip(exchange=exch, searchtext=search_txt)
+                if ret_search and ret_search.get('stat') == 'Ok':
+                    values = ret_search.get('values', [])
+                    for v in values:
+                        if 'exd' in v:
+                            expiries.add(v['exd'])
+
+            if expiries:
+                import datetime
+                sorted_exp = sorted(list(expiries), key=lambda x: datetime.datetime.strptime(x, '%d-%b-%Y'))
+                return sorted_exp
         except Exception as e:
             self.log(f"Failed to fetch expiries: {e}")
         return []
