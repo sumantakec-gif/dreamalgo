@@ -2,13 +2,15 @@ import streamlit as st
 
 # Force IPv4 for all outbound connections
 import socket
-old_getaddrinfo = socket.getaddrinfo
+if not hasattr(socket, '_patched'):
+    old_getaddrinfo = socket.getaddrinfo
 
-def new_getaddrinfo(*args, **kwargs):
-    responses = old_getaddrinfo(*args, **kwargs)
-    return [response for response in responses if response[0] == socket.AF_INET]
+    def new_getaddrinfo(*args, **kwargs):
+        responses = old_getaddrinfo(*args, **kwargs)
+        return [response for response in responses if response[0] == socket.AF_INET]
 
-socket.getaddrinfo = new_getaddrinfo
+    socket.getaddrinfo = new_getaddrinfo
+    socket._patched = True
 
 
 import pandas as pd
@@ -93,7 +95,12 @@ with col_c2:
     opt_type = st.selectbox("Option Type (CE/PE)", ["CE", "PE"])
 
 with col_c3:
-    expiry_selection = st.selectbox("Expiry", ["Current Expiry", "Next Expiry"])
+    expiry_options = ["Current Expiry", "Next Expiry"]
+    if st.session_state.logged_in and ltp:
+        available_expiries = st.session_state.api.get_available_expiries(index_name)
+        if available_expiries:
+            expiry_options = available_expiries
+    expiry_selection = st.selectbox("Expiry", expiry_options)
 
 with col_c4:
     if ltp:
@@ -101,14 +108,10 @@ with col_c4:
         atm_strike = round(ltp / round_val) * round_val
         spot_options = []
         for i in range(-20, 21):
-            if i == 0:
-                spot_options.append(f"{atm_strike} (ATM)")
-            elif i > 0:
-                spot_options.append(f"{atm_strike + (i * round_val)} (ATM +{i})")
-            else:
-                spot_options.append(f"{atm_strike + (i * round_val)} (ATM {i})")
+            spot_options.append(str(atm_strike + (i * round_val)))
+
         # Set default to ATM
-        default_index = spot_options.index(f"{atm_strike} (ATM)")
+        default_index = spot_options.index(str(atm_strike))
         strike_selection = st.selectbox("Strike Selection", spot_options, index=default_index)
     else:
         # Fallback if not logged in
@@ -185,10 +188,9 @@ with st.sidebar:
     # Generate the option config dynamically
     selected_option = None
     if st.session_state.logged_in and ltp:
-        if " (ATM" in strike_selection:
-            # Extract just the strike price integer part
-            selected_strike = int(strike_selection.split(" ")[0])
-        else:
+        try:
+            selected_strike = int(strike_selection)
+        except ValueError:
             round_val = 50 if index_name == 'NIFTY' else 100
             atm_strike = round(ltp / round_val) * round_val
             if strike_selection == "ATM":
@@ -199,7 +201,14 @@ with st.sidebar:
                 selected_strike = atm_strike + (offset * round_val) if opt_type == 'CE' else atm_strike - (offset * round_val)
 
         is_next_expiry = expiry_selection == "Next Expiry"
-        selected_option = st.session_state.api.get_nearest_expiry_option(index_name, opt_type, selected_strike, lot_price_min, lot_price_max, is_next_expiry)
+        target_date_str = None
+        if expiry_selection not in ["Current Expiry", "Next Expiry"]:
+            target_date_str = expiry_selection
+
+        selected_option = st.session_state.api.get_nearest_expiry_option(
+            index_name, opt_type, selected_strike, lot_price_min, lot_price_max,
+            next_expiry=is_next_expiry, target_date_str=target_date_str
+        )
 
     if st.button("Start Algo" if not st.session_state.running else "Stop Algo"):
         if not st.session_state.logged_in:
