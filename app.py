@@ -72,6 +72,26 @@ if 'logged_in' not in st.session_state:
 
 
 
+st.title("Flattrade Options Algo Trading")
+
+# Chart Controls (Decoupled from Algo Running state)
+col_c1, col_c2, col_c3, col_c4 = st.columns(4)
+with col_c1:
+    index_name = st.selectbox("Index", ["NIFTY", "SENSEX"])
+with col_c2:
+    opt_type = st.selectbox("Option Type (CE/PE)", ["CE", "PE"])
+with col_c3:
+    spot_options = ["ATM"]
+    for i in range(1, 21):
+        spot_options.append(f"Spot +{i}")
+    for i in range(1, 21):
+        spot_options.append(f"Spot -{i}")
+    strike_selection = st.selectbox("Strike Selection", spot_options)
+with col_c4:
+    chart_interval = st.selectbox("Chart Timeframe", ["1 Min", "3 Min", "5 Min"])
+    interval_map = {"1 Min": 1, "3 Min": 3, "5 Min": 5}
+    interval_val = interval_map[chart_interval]
+
 # Sidebar
 with st.sidebar:
     st.header("Broker Connection")
@@ -121,22 +141,6 @@ with st.sidebar:
 
     st.header("Strategy Settings")
 
-    index_name = st.selectbox("Index", ["NIFTY", "SENSEX"])
-    opt_type = st.selectbox("Option Type (CE/PE)", ["CE", "PE"])
-
-    # Generate Spot options from -20 to +20
-    spot_options = ["ATM"]
-    for i in range(1, 21):
-        spot_options.append(f"Spot +{i}")
-    for i in range(1, 21):
-        spot_options.append(f"Spot -{i}")
-
-    strike_selection = st.selectbox("Strike Selection", spot_options)
-
-    chart_interval = st.selectbox("Chart Timeframe", ["1 Min", "3 Min", "5 Min"])
-    interval_map = {"1 Min": 1, "3 Min": 3, "5 Min": 5}
-    interval_val = interval_map[chart_interval]
-
     lot_price_min = st.number_input("Lot Price Min", value=50.0)
     lot_price_max = st.number_input("Lot Price Max", value=200.0)
     mode = st.selectbox("Mode", ["BUY", "SELL"])
@@ -147,58 +151,36 @@ with st.sidebar:
     target_pts = st.number_input("Target (Points)", value=20)
     sl_pts = st.number_input("Stoploss (Points)", value=10)
 
+    # Generate the option config dynamically
+    selected_option = None
+    if st.session_state.logged_in:
+        ltp = st.session_state.api.get_index_ltp(index_name)
+        if ltp:
+            round_val = 50 if index_name == 'NIFTY' else 100
+            atm_strike = round(ltp / round_val) * round_val
+            if strike_selection == "ATM":
+                selected_strike = atm_strike
+            else:
+                offset_str = strike_selection.split(" ")[1]
+                offset = int(offset_str)
+                selected_strike = atm_strike + (offset * round_val) if opt_type == 'CE' else atm_strike - (offset * round_val)
+
+            selected_option = st.session_state.api.get_nearest_expiry_option(index_name, opt_type, selected_strike, lot_price_min, lot_price_max)
+
     if st.button("Start Algo" if not st.session_state.running else "Stop Algo"):
         if not st.session_state.logged_in:
             st.error("Please login first!")
+        elif not selected_option:
+            st.error("Cannot start algo without a valid option script selected!")
         else:
             st.session_state.running = not st.session_state.running
             if st.session_state.running:
-                # Script Selection
-
-
-
-                selected_strike = 0
-                option = None
-                ltp = st.session_state.api.get_index_ltp(index_name)
-                if not ltp:
-                    st.error(f"Could not fetch live price for {index_name}. Is market open/token correct?")
-                    st.session_state.running = False
-                    st.session_state.system_logs = []
-                else:
-                    round_val = 50 if index_name == 'NIFTY' else 100
-                    atm_strike = round(ltp / round_val) * round_val
-
-                    if strike_selection == "ATM":
-                        selected_strike = atm_strike
-                        st.info(f"ATM Selected: {selected_strike} (LTP: {ltp})")
-                    else:
-                        # Extract the offset (e.g., "+1" or "-2")
-                        offset_str = strike_selection.split(" ")[1]
-                        offset = int(offset_str)
-                        # CE and PE move in opposite directions for strike selection
-                        if opt_type == 'CE':
-                            selected_strike = atm_strike + (offset * round_val)
-                        else:
-                            selected_strike = atm_strike - (offset * round_val)
-                        st.info(f"{strike_selection} Selected: {selected_strike} (LTP: {ltp})")
-
-
-                    st.info(f"Searching option: {index_name}, {opt_type}, strike={selected_strike}")
-                    option = st.session_state.api.get_nearest_expiry_option(index_name, opt_type, selected_strike, lot_price_min, lot_price_max)
-                    if not option:
-                        st.error(f"Search failed. Last API Debug: {st.session_state.api.last_debug_info}")
-
-
-                if option:
-                    st.success(f"Selected Script: {option['tsym']}")
-                    st.session_state.strategy = StrategyController(
-                        st.session_state.api, option['tsym'], option['token'], option['exch'],
-                        mode, is_paper, qty, investment, target_pts, sl_pts, interval_val
-                    )
-                else:
-                    st.error("Could not find matching option script.")
-                    st.session_state.running = False
-                    st.session_state.system_logs = []
+                st.session_state.strategy = StrategyController(
+                    st.session_state.api, selected_option['tsym'], selected_option['token'], selected_option['exch'],
+                    mode, is_paper, qty, investment, target_pts, sl_pts, interval_val
+                )
+            else:
+                st.session_state.strategy = None
 
 
 
@@ -380,51 +362,58 @@ st.title("Flattrade Options Algo Trading")
 
 
 @st.fragment(run_every=5)
-def run_trading_loop():
-    if st.session_state.running and st.session_state.strategy:
-        df = st.session_state.strategy.fetch_and_calculate()
+def run_trading_loop(selected_option):
+    # If running, use the running strategy. If not, create a temporary one just for viewing!
+    strat = st.session_state.strategy
+    is_view_only = False
+
+    if not strat and selected_option and st.session_state.logged_in:
+        # Create a view-only strategy controller
+        strat = StrategyController(
+            st.session_state.api, selected_option['tsym'], selected_option['token'], selected_option['exch'],
+            "BUY", True, 0, 0, 0, 0, interval_val
+        )
+        is_view_only = True
+
+    if strat:
+        df = strat.fetch_and_calculate()
 
         col1, col2 = st.columns([3, 1])
-
         with col1:
             if not df.empty:
-                st.session_state.strategy.evaluate_signals(df)
-                chart_options = render_chart(df, st.session_state.strategy.symbol)
+                if not is_view_only:
+                    strat.evaluate_signals(df)
+                chart_options = render_chart(df, strat.symbol)
                 if chart_options:
                     renderLightweightCharts(chart_options, 'live_chart')
             else:
-                st.warning(f"Waiting for candlestick data... (API returned empty data for token {st.session_state.strategy.token})")
+                st.warning(f"Waiting for candlestick data... (API returned empty data for token {strat.token})")
 
         with col2:
+            if not is_view_only:
+                st.markdown("### Bot Running 🟢")
+            else:
+                st.markdown("### View Mode 🟡")
+
             if not df.empty:
                 latest_close = df.iloc[-1]['close']
                 st.metric("Last Traded Price", f"₹ {latest_close:.2f}")
-                st.metric("Live Running P&L", f"₹ {st.session_state.strategy.running_pnl:.2f}")
+                if not is_view_only:
+                    st.metric("Live Running P&L", f"₹ {strat.running_pnl:.2f}")
             else:
                 st.metric("Last Traded Price", "---")
-                st.metric("Live Running P&L", "---")
 
-        logs = get_trade_logs(20)
-        if logs:
-            log_data = [{"Time": l.timestamp, "Message": l.message} for l in logs]
-            st.dataframe(pd.DataFrame(log_data), use_container_width=True)
-
-        reports = get_order_reports()
-        if reports:
-            rep_df = pd.DataFrame([{
-                "Symbol": r.symbol, "ExpDate": r.exp_date, "StrikePrice": r.strike_price, "OpType": r.op_type,
-                "BuySell": r.buy_sell, "Qty": r.qty, "Price": r.price, "TradeQty": r.trade_qty,
-                "AvgPrice": r.avg_price, "TimeStamp": r.timestamp, "Points": r.points,
-                "Amount": r.amount, "Running P&L": r.running_pnl, "Gain %": r.gain_percent,
-                "Invested Amount": r.invested_amount
-            } for r in reports])
-            st.dataframe(rep_df, use_container_width=True)
-    else:
-        st.info("System is ready. Start the bot from the sidebar to begin trading.")
-
+        # Show tables
         st.subheader("Trade Logs")
         logs = get_trade_logs(20)
         if logs:
+            # Play a notification beep if a new log was added
+            if 'last_log_count' not in st.session_state:
+                st.session_state.last_log_count = len(logs)
+            elif len(logs) > st.session_state.last_log_count:
+                st.markdown('<audio autoplay style="display:none"><source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg"></audio>', unsafe_allow_html=True)
+                st.session_state.last_log_count = len(logs)
+
             log_data = [{"Time": l.timestamp, "Message": l.message} for l in logs]
             st.dataframe(pd.DataFrame(log_data), use_container_width=True)
 
@@ -439,5 +428,7 @@ def run_trading_loop():
                 "Invested Amount": r.invested_amount
             } for r in reports])
             st.dataframe(rep_df, use_container_width=True)
+    else:
+        st.info("Please login and select an index to view live charts.")
 
-run_trading_loop()
+run_trading_loop(selected_option)
