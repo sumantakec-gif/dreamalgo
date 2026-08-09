@@ -192,7 +192,7 @@ class FlattradeClient:
 
 
 
-    def get_nearest_expiry_option(self, index_name, opt_type, strike_price, min_price=None, max_price=None):
+    def get_nearest_expiry_option(self, index_name, opt_type, strike_price, min_price=None, max_price=None, next_expiry=False):
         strike_int = int(float(strike_price))
         exch = 'NFO' if index_name.lower() == 'nifty' else 'BFO'
         search_txt = f"{'NIFTY' if index_name.lower() == 'nifty' else 'SENSEX'} {strike_int} {opt_type}"
@@ -209,18 +209,37 @@ class FlattradeClient:
                 values = ret.get('values', [])
                 options = [v for v in values if v.get('optt') == opt_type.upper()]
                 if options:
+                    # Sort by absolute difference from strike price
                     options.sort(key=lambda x: abs(float(x.get('strprc', 0)) - strike_price))
+
+                    # Group options by expiry date string to find current/next expiry
+                    from collections import defaultdict
+                    expiry_groups = defaultdict(list)
                     for opt in options:
-                        if min_price is not None and max_price is not None:
-                            # check ltp
-                            self.log(f"Fetching LTP for {opt['tsym']} to check price bounds")
-                            q = self.api.get_quotes(exchange=opt['exch'], token=opt['token'])
-                            if q and q.get('stat') == 'Ok' and 'lp' in q:
-                                lp = float(q['lp'])
-                                if min_price <= lp <= max_price:
-                                    return opt
-                        else:
-                            return opt
+                        if 'exd' in opt: # exd format: 29-MAY-2024
+                            import datetime
+                            try:
+                                dt = datetime.datetime.strptime(opt['exd'], '%d-%b-%Y')
+                                expiry_groups[dt].append(opt)
+                            except:
+                                pass
+
+                    if expiry_groups:
+                        sorted_expiries = sorted(expiry_groups.keys())
+                        target_expiry = sorted_expiries[1] if (next_expiry and len(sorted_expiries) > 1) else sorted_expiries[0]
+                        target_options = expiry_groups[target_expiry]
+
+                        for opt in target_options:
+                            if min_price is not None and max_price is not None:
+                                # check ltp
+                                self.log(f"Fetching LTP for {opt['tsym']} to check price bounds")
+                                q = self.api.get_quotes(exchange=opt['exch'], token=opt['token'])
+                                if q and q.get('stat') == 'Ok' and 'lp' in q:
+                                    lp = float(q['lp'])
+                                    if min_price <= lp <= max_price:
+                                        return opt
+                            else:
+                                return opt
 
             # fallback
             self.log(f"Calling searchscrip({exch}, '{search_txt}')")
@@ -230,7 +249,14 @@ class FlattradeClient:
             if ret_search and ret_search.get('stat') == 'Ok':
                 values = ret_search.get('values', [])
                 if values:
-
+                    if next_expiry and len(values) > 1:
+                        # Attempt to sort by expiry if searching manually
+                        try:
+                            import datetime
+                            values.sort(key=lambda x: datetime.datetime.strptime(x.get('exd', '01-Jan-2099'), '%d-%b-%Y'))
+                            return values[1]
+                        except:
+                            return values[0]
                     return values[0]
 
 

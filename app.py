@@ -80,19 +80,45 @@ if 'logged_in' not in st.session_state:
 st.title("DreamAlgo")
 
 # Chart Controls (Decoupled from Algo Running state)
-col_c1, col_c2, col_c3, col_c4 = st.columns(4)
+col_c1, col_c2, col_c3, col_c4, col_c5 = st.columns(5)
 with col_c1:
     index_name = st.selectbox("Index", ["NIFTY", "SENSEX"])
+
+# Fetch LTP early to populate dynamic strike dropdown
+ltp = None
+if st.session_state.logged_in:
+    ltp = st.session_state.api.get_index_ltp(index_name)
+
 with col_c2:
     opt_type = st.selectbox("Option Type (CE/PE)", ["CE", "PE"])
+
 with col_c3:
-    spot_options = ["ATM"]
-    for i in range(1, 21):
-        spot_options.append(f"Spot +{i}")
-    for i in range(1, 21):
-        spot_options.append(f"Spot -{i}")
-    strike_selection = st.selectbox("Strike Selection", spot_options)
+    expiry_selection = st.selectbox("Expiry", ["Current Expiry", "Next Expiry"])
+
 with col_c4:
+    if ltp:
+        round_val = 50 if index_name == 'NIFTY' else 100
+        atm_strike = round(ltp / round_val) * round_val
+        spot_options = []
+        for i in range(-20, 21):
+            if i == 0:
+                spot_options.append(f"{atm_strike} (ATM)")
+            elif i > 0:
+                spot_options.append(f"{atm_strike + (i * round_val)} (ATM +{i})")
+            else:
+                spot_options.append(f"{atm_strike + (i * round_val)} (ATM {i})")
+        # Set default to ATM
+        default_index = spot_options.index(f"{atm_strike} (ATM)")
+        strike_selection = st.selectbox("Strike Selection", spot_options, index=default_index)
+    else:
+        # Fallback if not logged in
+        spot_options = ["ATM"]
+        for i in range(1, 21):
+            spot_options.append(f"ATM +{i}")
+            spot_options.append(f"ATM -{i}")
+        strike_selection = st.selectbox("Strike Selection", spot_options)
+
+with col_c5:
     chart_interval = st.selectbox("Chart Timeframe", ["1 Min", "3 Min", "5 Min"])
     interval_map = {"1 Min": 1, "3 Min": 3, "5 Min": 5}
     interval_val = interval_map[chart_interval]
@@ -158,9 +184,11 @@ with st.sidebar:
 
     # Generate the option config dynamically
     selected_option = None
-    if st.session_state.logged_in:
-        ltp = st.session_state.api.get_index_ltp(index_name)
-        if ltp:
+    if st.session_state.logged_in and ltp:
+        if " (ATM" in strike_selection:
+            # Extract just the strike price integer part
+            selected_strike = int(strike_selection.split(" ")[0])
+        else:
             round_val = 50 if index_name == 'NIFTY' else 100
             atm_strike = round(ltp / round_val) * round_val
             if strike_selection == "ATM":
@@ -170,7 +198,8 @@ with st.sidebar:
                 offset = int(offset_str)
                 selected_strike = atm_strike + (offset * round_val) if opt_type == 'CE' else atm_strike - (offset * round_val)
 
-            selected_option = st.session_state.api.get_nearest_expiry_option(index_name, opt_type, selected_strike, lot_price_min, lot_price_max)
+        is_next_expiry = expiry_selection == "Next Expiry"
+        selected_option = st.session_state.api.get_nearest_expiry_option(index_name, opt_type, selected_strike, lot_price_min, lot_price_max, is_next_expiry)
 
     if st.button("Start Algo" if not st.session_state.running else "Stop Algo"):
         if not st.session_state.logged_in:
