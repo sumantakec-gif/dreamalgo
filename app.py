@@ -72,7 +72,7 @@ if 'logged_in' not in st.session_state:
 
 
 
-st.title("Flattrade Options Algo Trading")
+st.title("DreamAlgo")
 
 # Chart Controls (Decoupled from Algo Running state)
 col_c1, col_c2, col_c3, col_c4 = st.columns(4)
@@ -331,10 +331,7 @@ def render_chart(df, script_name='Options Algo Chart'):
     ]
 
 
-st.subheader("System Logs (Live API Debug)")
-if st.session_state.system_logs:
-    log_text = "\n".join(st.session_state.system_logs[::-1])
-    st.markdown(f'<div style="height: 200px; overflow-y: scroll; background-color: #f0f2f6; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; white-space: pre-wrap;">{log_text}</div>', unsafe_allow_html=True)
+
 
 
 # Main Area
@@ -357,8 +354,6 @@ if st.session_state.show_settings:
             save_user_config("Flattrade", s_user_id, s_api_key, s_api_secret)
             st.success("Credentials saved to database successfully!")
             st.session_state.show_settings = False
-
-st.title("Flattrade Options Algo Trading")
 
 
 @st.fragment(run_every=5)
@@ -432,3 +427,8 @@ def run_trading_loop(selected_option):
         st.info("Please login and select an index to view live charts.")
 
 run_trading_loop(selected_option)
+
+st.subheader("System Logs (Live API Debug)")
+if st.session_state.system_logs:
+    log_text = "\n".join(st.session_state.system_logs[::-1])
+    st.markdown(f'<div style="height: 200px; overflow-y: scroll; background-color: #f0f2f6; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; white-space: pre-wrap;">{log_text}</div>', unsafe_allow_html=True)
