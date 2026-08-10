@@ -128,12 +128,17 @@ class FlattradeClient:
             response = requests.post("https://authapi.flattrade.in/trade/apitoken", json=payload)
             self.log(f"Token Gen HTTP {response.status_code} | Response: {response.text}")
             if response.status_code == 200:
-                data = response.json()
-                if data.get("stat") == "Ok":
-                    # Flattrade returns the user ID as 'client' and session token as 'token'
-                    return data.get("client"), data.get("token")
-                else:
-                    self.last_api_error = data.get("emsg", "Unknown Error in Token Generation")
+                try:
+                    data = response.json()
+                    if data.get("stat") == "Ok":
+                        # Flattrade returns the user ID as 'client' and session token as 'token'
+                        return data.get("client"), data.get("token")
+                    else:
+                        self.last_api_error = data.get("emsg", "Unknown Error in Token Generation")
+                        return None, None
+                except requests.exceptions.JSONDecodeError:
+                    # If Flattrade returns an HTML error page (like FTACKM04) instead of JSON
+                    self.last_api_error = "Received invalid JSON from broker (possibly expired auth code). Please connect broker again."
                     return None, None
             else:
                 self.last_api_error = f"HTTP {response.status_code}: {response.text}"
