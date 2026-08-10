@@ -167,62 +167,72 @@ with col_c5:
 
 # Sidebar
 with st.sidebar:
-    st.header("Broker Connection")
-    broker = st.selectbox("Select Broker", ["Flattrade"])
+    menu_selection = st.radio("Menu", ["Broker", "Practice", "Algo", "Historical Chart"])
+    st.markdown("---")
 
-    config = get_user_config(broker)
+    if menu_selection == "Broker":
+        st.header("Broker Connection")
+        broker = st.selectbox("Select Broker", ["Flattrade"])
 
-    if not st.session_state.logged_in:
-        if not config:
-            st.warning("Please configure your credentials in the ⚙️ Settings menu first.")
-        else:
-            st.markdown("---")
+        config = get_user_config(broker)
 
-            auth_url = f"https://auth.flattrade.in/?app_key={config.api_key}"
-            st.markdown(f'<a href="{auth_url}" target="_self"><button style="background-color:#4CAF50; color:white; padding:10px 20px; text-align:center; border:none; border-radius:4px; cursor:pointer; width:100%;">Connect Broker</button></a>', unsafe_allow_html=True)
+        if not st.session_state.logged_in:
+            if not config:
+                st.warning("Please configure your credentials in the ⚙️ Settings menu first.")
+            else:
+                st.markdown("---")
 
-            query_params = st.query_params
-            url_code = query_params.get("code", "")
+                auth_url = f"https://auth.flattrade.in/?app_key={config.api_key}"
+                st.markdown(f'<a href="{auth_url}" target="_self"><button style="background-color:#4CAF50; color:white; padding:10px 20px; text-align:center; border:none; border-radius:4px; cursor:pointer; width:100%;">Connect Broker</button></a>', unsafe_allow_html=True)
 
-            if url_code:
-                uid, token = st.session_state.api.generate_session_token(config.api_key, config.api_secret, url_code)
-                if uid and token:
-                    if st.session_state.api.login(uid, token):
-                        st.session_state.logged_in = True
-                        save_session_cache(uid, token)
-                        st.success(f"Connected successfully as {uid}!")
-                        st.query_params.clear()
-                        st.rerun()
+                query_params = st.query_params
+                url_code = query_params.get("code", "")
+
+                if url_code:
+                    uid, token = st.session_state.api.generate_session_token(config.api_key, config.api_secret, url_code)
+                    if uid and token:
+                        if st.session_state.api.login(uid, token):
+                            st.session_state.logged_in = True
+                            save_session_cache(uid, token)
+                            st.success(f"Connected successfully as {uid}!")
+                            st.query_params.clear()
+                            st.rerun()
+                        else:
+                            st.error(f"Login validation failed! API Error: {st.session_state.api.last_api_error}")
                     else:
-                        st.error(f"Login validation failed! API Error: {st.session_state.api.last_api_error}")
-                else:
-                    st.error(f"Token Generation failed! API Error: {st.session_state.api.last_api_error}")
-                    st.query_params.clear()
+                        st.error(f"Token Generation failed! API Error: {st.session_state.api.last_api_error}")
+                        st.query_params.clear()
 
-    else:
-        st.success("Broker Connected ✅")
-        if st.button("Disconnect Broker"):
-            import os
-            if os.path.exists(".flattrade_session.json"):
-                os.remove(".flattrade_session.json")
-            st.session_state.api = None
-            st.session_state.logged_in = False
-            st.session_state.running = False
-            st.session_state.strategy = None
-            st.query_params.clear()
-            st.rerun()
+        else:
+            st.success("Broker Connected ✅")
+            if st.button("Disconnect Broker"):
+                import os
+                if os.path.exists(".flattrade_session.json"):
+                    os.remove(".flattrade_session.json")
+                st.session_state.api = None
+                st.session_state.logged_in = False
+                st.session_state.running = False
+                st.session_state.strategy = None
+                st.query_params.clear()
+                st.rerun()
 
-    st.header("Strategy Settings")
+    elif menu_selection in ["Practice", "Algo"]:
+        st.header(f"{menu_selection} Settings")
 
-    lot_price_min = st.number_input("Lot Price Min", value=50.0)
-    lot_price_max = st.number_input("Lot Price Max", value=200.0)
-    mode = st.selectbox("Mode", ["BUY", "SELL"])
+        lot_price_min = st.number_input("Lot Price Min", value=50.0)
+        lot_price_max = st.number_input("Lot Price Max", value=200.0)
+        mode = st.selectbox("Mode", ["BUY", "SELL"])
 
-    is_paper = st.checkbox("Paper Trade", value=True)
-    qty = st.number_input("Lot Size / Quantity", value=50)
-    investment = st.number_input("Total Amount to Invest", value=100000)
-    target_pts = st.number_input("Target (Points)", value=20)
-    sl_pts = st.number_input("Stoploss (Points)", value=10)
+        is_paper = st.checkbox("Paper Trade", value=True)
+        qty = st.number_input("Lot Size / Quantity", value=50)
+        investment = st.number_input("Total Amount to Invest", value=100000)
+        target_pts = st.number_input("Target (Points)", value=20)
+        sl_pts = st.number_input("Stoploss (Points)", value=10)
+
+    elif menu_selection == "Historical Chart":
+        st.header("Historical Chart")
+        st.info("Historical view placeholder. Navigate back to Algo or Practice to run the bot.")
+        is_paper = True
 
     # Generate the option config dynamically
     selected_option = None
@@ -246,25 +256,30 @@ with st.sidebar:
         if expiry_selection not in ["Current Expiry", "Next Expiry"]:
             target_date_str = expiry_selection
 
+        # We need lot_price_min / lot_price_max to safely fetch options even in view mode
+        lp_min = lot_price_min if 'lot_price_min' in locals() else 50.0
+        lp_max = lot_price_max if 'lot_price_max' in locals() else 200.0
+
         selected_option = st.session_state.api.get_nearest_expiry_option(
-            index_name, opt_type, selected_strike, lot_price_min, lot_price_max,
+            index_name, opt_type, selected_strike, lp_min, lp_max,
             next_expiry=is_next_expiry, target_date_str=target_date_str
         )
 
-    if st.button("Start Algo" if not st.session_state.running else "Stop Algo"):
-        if not st.session_state.logged_in:
-            st.error("Please login first!")
-        elif not selected_option:
-            st.error("Cannot start algo without a valid option script selected!")
-        else:
-            st.session_state.running = not st.session_state.running
-            if st.session_state.running:
-                st.session_state.strategy = StrategyController(
-                    st.session_state.api, selected_option['tsym'], selected_option['token'], selected_option['exch'],
-                    mode, is_paper, qty, investment, target_pts, sl_pts, interval_val
-                )
+    if 'menu_selection' in locals() and menu_selection in ["Practice", "Algo"]:
+        if st.button("Start Algo" if not st.session_state.running else "Stop Algo"):
+            if not st.session_state.logged_in:
+                st.error("Please login first!")
+            elif not selected_option:
+                st.error("Cannot start algo without a valid option script selected!")
             else:
-                st.session_state.strategy = None
+                st.session_state.running = not st.session_state.running
+                if st.session_state.running:
+                    st.session_state.strategy = StrategyController(
+                        st.session_state.api, selected_option['tsym'], selected_option['token'], selected_option['exch'],
+                        mode, is_paper, qty, investment, target_pts, sl_pts, interval_val
+                    )
+                else:
+                    st.session_state.strategy = None
 
 
 
