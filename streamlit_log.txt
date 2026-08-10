@@ -1,10 +1,16 @@
 
 Collecting usage statistics. To deactivate, set browser.gatherUsageStats to false.
 
-2026-08-10 09:17:31.793 Uvicorn server started on :::8501
+2026-08-10 10:42:13.087 Uvicorn server started on :::8502
 
   You can now view your Streamlit app in your browser.
 
-  Local URL: http://localhost:8501
-  Network URL: http://192.168.0.2:8501
-  External URL: http://34.134.215.5:8501
+  Local URL: http://localhost:8502
+  Network URL: http://192.168.0.2:8502
+  External URL: http://34.72.116.213:8502
+
+2026-08-10 10:44:14.711 Please replace `use_container_width` with `width`.
+
+`use_container_width` will be removed after 2025-12-31.
+
+For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
