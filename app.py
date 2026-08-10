@@ -483,7 +483,12 @@ def run_trading_loop(selected_option):
 
                 chart_options = render_chart(df, strat.symbol, chart_interval)
                 if chart_options:
-                    renderLightweightCharts(chart_options, 'live_chart')
+                    # Using a hardcoded key preserves the JS instance state so that it updates the last candle
+                    # smoothly without recreating the chart DOM element from scratch.
+                    # We render inside a placeholder (st.empty) to ensure layout stability
+                    chart_placeholder = st.empty()
+                    with chart_placeholder:
+                        renderLightweightCharts(chart_options, key="live_trading_chart")
             else:
                 st.warning(f"Waiting for candlestick data... (API returned empty data for token {strat.token})")
 
