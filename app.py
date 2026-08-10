@@ -17,7 +17,7 @@ import pandas as pd
 import time
 from src.trading.api import FlattradeClient
 from src.trading.strategy import StrategyController
-from src.database.crud import get_trade_logs, get_order_reports, save_user_config, get_user_config
+from src.database.crud import get_trade_logs, get_order_reports, save_user_config, get_user_config, get_today_pnl
 from io import BytesIO
 
 
@@ -79,17 +79,45 @@ if 'logged_in' not in st.session_state:
 
 
 
-st.title("DreamAlgo")
+# Fetch Quote details (LTP and Prev Close) early to populate Header and strike dropdown
+ltp = None
+prev_close = None
+if st.session_state.logged_in:
+    # default to NIFTY for the header if not selected yet
+    idx_for_header = st.session_state.get('selected_index', "NIFTY")
+    quote = st.session_state.api.get_index_quote_details(idx_for_header)
+    if quote:
+        ltp = quote['lp']
+        prev_close = quote['pc']
+
+# Build Header UI
+header_col1, header_col2 = st.columns([1, 1])
+with header_col1:
+    st.title("DreamAlgo")
+with header_col2:
+    if st.session_state.logged_in and ltp and prev_close:
+        pts_change = ltp - prev_close
+        pts_color = "green" if pts_change >= 0 else "red"
+        sign = "+" if pts_change >= 0 else ""
+
+        today_pnl = get_today_pnl()
+        pnl_color = "green" if today_pnl >= 0 else "red"
+        pnl_sign = "+" if today_pnl >= 0 else ""
+
+        st.markdown(
+            f"<div style='text-align: right; padding-top: 20px;'>"
+            f"<b>{st.session_state.get('selected_index', 'NIFTY')}</b>: ₹{ltp:.2f} "
+            f"(<span style='color: {pts_color};'>{sign}{pts_change:.2f}</span>)<br>"
+            f"<b>Today's Net P&L</b>: <span style='color: {pnl_color};'>₹{pnl_sign}{today_pnl:.2f}</span>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
 
 # Chart Controls (Decoupled from Algo Running state)
 col_c1, col_c2, col_c3, col_c4, col_c5 = st.columns(5)
 with col_c1:
-    index_name = st.selectbox("Index", ["NIFTY", "SENSEX"])
+    index_name = st.selectbox("Index", ["NIFTY", "SENSEX"], key="selected_index")
 
-# Fetch LTP early to populate dynamic strike dropdown
-ltp = None
-if st.session_state.logged_in:
-    ltp = st.session_state.api.get_index_ltp(index_name)
 
 with col_c2:
     opt_type = st.selectbox("Option Type (CE/PE)", ["CE", "PE"])

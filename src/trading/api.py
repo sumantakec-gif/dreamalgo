@@ -194,6 +194,18 @@ class FlattradeClient:
         self.last_api_error = str(ret)
         return None
 
+    def get_index_quote_details(self, index_name):
+        # NIFTY token = 26000, SENSEX token = 1
+        exchange = 'NSE' if index_name.lower() == 'nifty' else 'BSE'
+        token = '26000' if index_name.lower() == 'nifty' else '1'
+        ret = self.api.get_quotes(exchange=exchange, token=token)
+        if ret and ret.get('stat') == 'Ok':
+            lp = float(ret.get('lp', 0))
+            # Previous close is typically 'c' in NorenApi
+            pc = float(ret.get('c', lp))
+            return {'lp': lp, 'pc': pc}
+        return None
+
     def get_available_expiries(self, index_name):
         """Fetches the next few available option expiry dates."""
         ltp = self.get_index_ltp(index_name)

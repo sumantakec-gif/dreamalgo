@@ -92,6 +92,33 @@ def get_trade_logs(limit=100):
     finally:
         session.close()
 
+def get_today_pnl():
+    session = get_session()
+    try:
+        from datetime import date
+        today = date.today()
+        # Get latest order reports for today
+        reports = session.query(OrderReport).filter(
+            OrderReport.timestamp >= datetime.combine(today, datetime.min.time()),
+            OrderReport.timestamp <= datetime.combine(today, datetime.max.time())
+        ).all()
+        # Or if order report isn't used much, check TradeLog?
+        # Actually OrderReport has `amount` which is PnL (for SELL to close)
+        # However, the strategy class updates `running_pnl` inside the loop.
+        # But we need net profit/loss across all trades today.
+
+        # Let's sum the running PnL from closed positions for today.
+        # Actually, OrderReport stores `amount` which is the P&L of that specific trade.
+        # Let's sum the 'amount' field for all OrderReport entries for today where it represents a realized P&L.
+
+        total_pnl = sum([r.amount for r in reports if r.amount is not None])
+        return total_pnl
+    except Exception as e:
+        print(f"Error calculating PnL: {e}")
+        return 0.0
+    finally:
+        session.close()
+
 
 def get_order_reports():
     session = get_session()
