@@ -79,36 +79,42 @@ if 'logged_in' not in st.session_state:
 
 
 
-# Fetch Quote details (LTP and Prev Close) early to populate Header and strike dropdown
+# Fetch Quote details early to populate Header and strike dropdown
+nifty_quote = None
+sensex_quote = None
 ltp = None
-prev_close = None
 if st.session_state.logged_in:
-    # default to NIFTY for the header if not selected yet
-    idx_for_header = st.session_state.get('selected_index', "NIFTY")
-    quote = st.session_state.api.get_index_quote_details(idx_for_header)
-    if quote:
-        ltp = quote['lp']
-        prev_close = quote['pc']
+    nifty_quote = st.session_state.api.get_index_quote_details("NIFTY")
+    sensex_quote = st.session_state.api.get_index_quote_details("SENSEX")
 
 # Build Header UI
-header_col1, header_col2 = st.columns([1, 1])
+header_col1, header_col2 = st.columns([1.5, 3])
 with header_col1:
     st.title("DreamAlgo")
 with header_col2:
-    if st.session_state.logged_in and ltp and prev_close:
-        pts_change = ltp - prev_close
-        pts_color = "green" if pts_change >= 0 else "red"
-        sign = "+" if pts_change >= 0 else ""
+    if st.session_state.logged_in and nifty_quote and sensex_quote:
+        n_lp, n_pc = nifty_quote['lp'], nifty_quote['pc']
+        s_lp, s_pc = sensex_quote['lp'], sensex_quote['pc']
+
+        n_chg = n_lp - n_pc
+        n_col = "green" if n_chg >= 0 else "red"
+        n_sgn = "+" if n_chg >= 0 else ""
+
+        s_chg = s_lp - s_pc
+        s_col = "green" if s_chg >= 0 else "red"
+        s_sgn = "+" if s_chg >= 0 else ""
 
         today_pnl = get_today_pnl()
-        pnl_color = "green" if today_pnl >= 0 else "red"
-        pnl_sign = "+" if today_pnl >= 0 else ""
+        pnl_col = "green" if today_pnl >= 0 else "red"
+        pnl_sgn = "+" if today_pnl >= 0 else ""
 
         st.markdown(
-            f"<div style='text-align: right; padding-top: 20px;'>"
-            f"<b>{st.session_state.get('selected_index', 'NIFTY')}</b>: ₹{ltp:.2f} "
-            f"(<span style='color: {pts_color};'>{sign}{pts_change:.2f}</span>)<br>"
-            f"<b>Today's Net P&L</b>: <span style='color: {pnl_color};'>₹{pnl_sign}{today_pnl:.2f}</span>"
+            f"<div style='text-align: right; padding-top: 25px; white-space: nowrap;'>"
+            f"<span style='margin-right: 15px;'><b>NIFTY</b>: ₹{n_lp:.2f} "
+            f"(<span style='color: {n_col};'>{n_sgn}{n_chg:.2f}</span>)</span>"
+            f"<span style='margin-right: 15px;'><b>SENSEX</b>: ₹{s_lp:.2f} "
+            f"(<span style='color: {s_col};'>{s_sgn}{s_chg:.2f}</span>)</span>"
+            f"<span><b>Today's P&L</b>: <span style='color: {pnl_col};'>₹{pnl_sgn}{today_pnl:.2f}</span></span>"
             f"</div>",
             unsafe_allow_html=True
         )
@@ -118,6 +124,11 @@ col_c1, col_c2, col_c3, col_c4, col_c5 = st.columns(5)
 with col_c1:
     index_name = st.selectbox("Index", ["NIFTY", "SENSEX"], key="selected_index")
 
+if st.session_state.logged_in:
+    if index_name == "NIFTY" and nifty_quote:
+        ltp = nifty_quote['lp']
+    elif index_name == "SENSEX" and sensex_quote:
+        ltp = sensex_quote['lp']
 
 with col_c2:
     opt_type = st.selectbox("Option Type (CE/PE)", ["CE", "PE"])
