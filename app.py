@@ -434,6 +434,10 @@ if st.session_state.show_settings:
         s_api_key = st.text_input("API Key", value=config.api_key if config else "")
         s_api_secret = st.text_input("API Secret", value=config.api_secret if config else "", type="password")
 
+        cached_session = load_session_cache()
+        saved_token = cached_session['token'] if cached_session else "No token saved"
+        st.text_input("Saved Flattrade Token (Read-Only)", value=saved_token, disabled=True)
+
         if st.form_submit_button("Save Credentials"):
             save_user_config("Flattrade", s_user_id, s_api_key, s_api_secret)
             st.success("Credentials saved to database successfully!")
