@@ -12,7 +12,11 @@ DB_PASS = os.getenv('DB_PASS', 'jules')
 DB_HOST = os.getenv('DB_HOST', 'localhost')
 DB_PORT = os.getenv('DB_PORT', '5432')
 
-engine = create_engine(f'postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}')
+# Use connect_args to set a small connect_timeout so Streamlit doesn't hang forever
+engine = create_engine(
+    f'postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}',
+    connect_args={"connect_timeout": 5}
+)
 Base = declarative_base()
 
 class Candlestick(Base):
@@ -70,7 +74,11 @@ class UserConfig(Base):
     password = Column(String)
     totp = Column(String)
 
-Base.metadata.create_all(engine)
+try:
+    Base.metadata.create_all(engine)
+except Exception as e:
+    print(f"Warning: Database connection failed. {e}")
+
 Session = sessionmaker(bind=engine)
 
 def get_session():

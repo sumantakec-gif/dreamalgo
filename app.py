@@ -19,6 +19,7 @@ from src.trading.api import FlattradeClient
 from src.trading.strategy import StrategyController
 from src.database.crud import get_trade_logs, get_order_reports, save_user_config, get_user_config, get_today_pnl
 from io import BytesIO
+from streamlit_option_menu import option_menu
 
 
 import os
@@ -167,7 +168,13 @@ with col_c5:
 
 # Sidebar
 with st.sidebar:
-    menu_selection = st.radio("Menu", ["Broker", "Practice", "Algo", "Historical Chart"])
+    menu_selection = option_menu(
+        "Menu",
+        ["Broker", "Practice", "Algo", "Historical Chart"],
+        icons=['building', 'play-circle', 'robot', 'bar-chart-line'],
+        menu_icon="cast",
+        default_index=0
+    )
     st.markdown("---")
 
     if menu_selection == "Broker":

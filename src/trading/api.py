@@ -170,16 +170,6 @@ class FlattradeClient:
             self.last_api_error = str(e)
             logging.error(f"Login exception: {e}")
             return False
-        except Exception as e:
-            self.last_api_error = str(e)
-            logging.error(f"Login exception: {e}")
-            return False
-        except Exception as e:
-            logging.error(f"Login exception: {e}")
-            return False
-        except Exception as e:
-            logging.error(f"Login exception: {e}")
-            return False
 
     def get_index_ltp(self, index_name):
         # NIFTY token = 26000, SENSEX token = 1

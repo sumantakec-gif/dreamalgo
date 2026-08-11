@@ -1,5 +1,7 @@
-.env
+.flattrade_session.json
 __pycache__/
 *.pyc
-streamlit.log
-flattrade_api/
+.env
+streamlit_log.txt
+streamlit_test_log.txt
+test_*.py
