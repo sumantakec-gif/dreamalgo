@@ -108,13 +108,16 @@ with header_col2:
         pnl_col = "green" if today_pnl >= 0 else "red"
         pnl_sgn = "+" if today_pnl >= 0 else ""
 
+        limit_val = st.session_state.api.get_available_limit() if st.session_state.logged_in else 0.0
+
         st.markdown(
             f"<div style='text-align: right; padding-top: 25px; white-space: nowrap;'>"
             f"<span style='margin-right: 15px;'><b>NIFTY</b>: ₹{n_lp:.2f} "
             f"(<span style='color: {n_col};'>{n_sgn}{n_chg:.2f}</span>)</span>"
             f"<span style='margin-right: 15px;'><b>SENSEX</b>: ₹{s_lp:.2f} "
             f"(<span style='color: {s_col};'>{s_sgn}{s_chg:.2f}</span>)</span>"
-            f"<span><b>Today's P&L</b>: <span style='color: {pnl_col};'>₹{pnl_sgn}{today_pnl:.2f}</span></span>"
+            f"<span style='margin-right: 15px;'><b>Today's P&L</b>: <span style='color: {pnl_col};'>₹{pnl_sgn}{today_pnl:.2f}</span></span>"
+            f"<span><b>Limit</b>: ₹{limit_val:.2f}</span>"
             f"</div>",
             unsafe_allow_html=True
         )
