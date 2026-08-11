@@ -171,6 +171,16 @@ class FlattradeClient:
             logging.error(f"Login exception: {e}")
             return False
 
+    def get_available_limit(self):
+        try:
+            ret = self.api.get_limits()
+            if ret and ret.get('stat') == 'Ok':
+                return float(ret.get('cash', 0))
+            return 0.0
+        except Exception as e:
+            logging.error(f"Error fetching limits: {e}")
+            return 0.0
+
     def get_index_ltp(self, index_name):
         # NIFTY token = 26000, SENSEX token = 1
         exchange = 'NSE' if index_name.lower() == 'nifty' else 'BSE'
