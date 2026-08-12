@@ -205,163 +205,98 @@ else:
 
 
 
-    # Generate the option config dynamically
-    selected_option = None
-    if st.session_state.logged_in and ltp:
-        try:
-            selected_strike = int(strike_selection)
-        except ValueError:
-            round_val = 50 if index_name == 'NIFTY' else 100
-            atm_strike = round(ltp / round_val) * round_val
-            if "Login" in strike_selection:
-                selected_strike = atm_strike
-            elif strike_selection == "ATM":
-                selected_strike = atm_strike
+# Generate the option config dynamically
+selected_option = None
+if st.session_state.logged_in and ltp:
+    try:
+        selected_strike = int(strike_selection)
+    except ValueError:
+        round_val = 50 if index_name == 'NIFTY' else 100
+        atm_strike = round(ltp / round_val) * round_val
+        if "Login" in strike_selection:
+            selected_strike = atm_strike
+        elif strike_selection == "ATM":
+            selected_strike = atm_strike
+        else:
+            offset_str = strike_selection.split(" ")[1]
+            offset = int(offset_str)
+            selected_strike = atm_strike + (offset * round_val) if opt_type == 'CE' else atm_strike - (offset * round_val)
+
+    is_next_expiry = expiry_selection == "Next Expiry"
+    target_date_str = None
+    if expiry_selection not in ["Current Expiry", "Next Expiry"]:
+        target_date_str = expiry_selection
+
+    # We need lot_price_min / lot_price_max to safely fetch options even in view mode
+    lp_min = lot_price_min if 'lot_price_min' in locals() else 50.0
+    lp_max = lot_price_max if 'lot_price_max' in locals() else 200.0
+
+    selected_option = st.session_state.api.get_nearest_expiry_option(
+        index_name, opt_type, selected_strike, lp_min, lp_max,
+        next_expiry=is_next_expiry, target_date_str=target_date_str
+    )
+
+if 'menu_selection' in locals() and menu_selection in ["Practice", "Algo"]:
+    if st.button("Start Algo" if not st.session_state.running else "Stop Algo"):
+        if not st.session_state.logged_in:
+            st.error("Please login first!")
+        elif not selected_option:
+            st.error("Cannot start algo without a valid option script selected!")
+        else:
+            st.session_state.running = not st.session_state.running
+            if st.session_state.running:
+                st.session_state.strategy = StrategyController(
+                    st.session_state.api, selected_option['tsym'], selected_option['token'], selected_option['exch'],
+                    mode, is_paper, qty, investment, target_pts, sl_pts, interval_val
+                )
             else:
-                offset_str = strike_selection.split(" ")[1]
-                offset = int(offset_str)
-                selected_strike = atm_strike + (offset * round_val) if opt_type == 'CE' else atm_strike - (offset * round_val)
-
-        is_next_expiry = expiry_selection == "Next Expiry"
-        target_date_str = None
-        if expiry_selection not in ["Current Expiry", "Next Expiry"]:
-            target_date_str = expiry_selection
-
-        # We need lot_price_min / lot_price_max to safely fetch options even in view mode
-        lp_min = lot_price_min if 'lot_price_min' in locals() else 50.0
-        lp_max = lot_price_max if 'lot_price_max' in locals() else 200.0
-
-        selected_option = st.session_state.api.get_nearest_expiry_option(
-            index_name, opt_type, selected_strike, lp_min, lp_max,
-            next_expiry=is_next_expiry, target_date_str=target_date_str
-        )
-
-    if 'menu_selection' in locals() and menu_selection in ["Practice", "Algo"]:
-        if st.button("Start Algo" if not st.session_state.running else "Stop Algo"):
-            if not st.session_state.logged_in:
-                st.error("Please login first!")
-            elif not selected_option:
-                st.error("Cannot start algo without a valid option script selected!")
-            else:
-                st.session_state.running = not st.session_state.running
-                if st.session_state.running:
-                    st.session_state.strategy = StrategyController(
-                        st.session_state.api, selected_option['tsym'], selected_option['token'], selected_option['exch'],
-                        mode, is_paper, qty, investment, target_pts, sl_pts, interval_val
-                    )
-                else:
-                    st.session_state.strategy = None
+                st.session_state.strategy = None
 
 
 
-from streamlit_lightweight_charts import renderLightweightCharts
+import plotly.graph_objects as go
 import json
 
 def render_chart(df, script_name='Options Algo Chart', timeframe='1 Min'):
     if df.empty:
         return None
 
-    # Format data for Lightweight Charts
-    # Time must be string in YYYY-MM-DD format (or UNIX timestamp)
-    chart_data = []
+    plot_df = df.copy()
+    if not pd.api.types.is_datetime64_any_dtype(plot_df['timestamp']):
+        plot_df['timestamp'] = pd.to_datetime(plot_df['timestamp'])
 
-    # Keep only columns we need and drop NaNs for the chart
-    plot_df = df[['timestamp', 'open', 'high', 'low', 'close']].copy()
-    if 'ema_9' in df: plot_df['ema_9'] = df['ema_9']
-    if 'ema_25' in df: plot_df['ema_25'] = df['ema_25']
-    if 'ema_50_low' in df: plot_df['ema_50_low'] = df['ema_50_low']
-    if 'ema_250' in df: plot_df['ema_250'] = df['ema_250']
-    if 'vwap' in df: plot_df['vwap'] = df['vwap']
+    fig = go.Figure()
 
-    # We use UNIX timestamps so exact minute is preserved correctly
-    plot_df['time'] = plot_df['timestamp'].astype('int64') // 10**9
+    # Main Candlestick
+    fig.add_trace(go.Candlestick(
+        x=plot_df['timestamp'],
+        open=plot_df['open'],
+        high=plot_df['high'],
+        low=plot_df['low'],
+        close=plot_df['close'],
+        name='Price'
+    ))
 
-    candles = plot_df[['time', 'open', 'high', 'low', 'close']].to_dict('records')
-
-    chartOptions = {
-        "layout": {
-            "textColor": 'black',
-            "background": {
-                "type": 'solid',
-                "color": 'white'
-            }
-        },
-        "watermark": {
-            "color": 'rgba(0, 0, 0, 0.1)',
-            "visible": True,
-            "text": script_name,
-            "fontSize": 48,
-            "horzAlign": 'center',
-            "vertAlign": 'center',
-        },
-        "timeScale": {
-            "timeVisible": True,
-            "secondsVisible": False,
-        },
-        "crosshair": {
-            "mode": 1 # Normal mode
-        }
-    }
-
-    seriesCandlestickChart = [{
-        "type": 'Candlestick',
-        "data": candles,
-        "options": {
-            "upColor": '#26a69a',
-            "downColor": '#ef5350',
-            "borderVisible": False,
-            "wickUpColor": '#26a69a',
-            "wickDownColor": '#ef5350'
-        }
-    }]
-
-    # Add indicators if they exist and are enabled
+    # Add EMAs and VWAP
     if 'ema_9' in plot_df and st.session_state.show_ema_9:
-        ema9_data = plot_df[['time', 'ema_9']].rename(columns={'ema_9': 'value'}).dropna().to_dict('records')
-        seriesCandlestickChart.append({
-            "type": 'Line',
-            "data": ema9_data,
-            "options": {"color": 'magenta', "lineWidth": 1.5, "title": "9 EMA"}
-        })
+        fig.add_trace(go.Scatter(x=plot_df['timestamp'], y=plot_df['ema_9'], mode='lines', name='9 EMA', line=dict(color='purple', width=1.5)))
 
     if 'ema_25' in plot_df and st.session_state.show_ema_25:
-        ema25_data = plot_df[['time', 'ema_25']].rename(columns={'ema_25': 'value'}).dropna().to_dict('records')
-        seriesCandlestickChart.append({
-            "type": 'Line',
-            "data": ema25_data,
-            "options": {"color": 'green', "lineWidth": 1.5, "title": "25 EMA"}
-        })
+        fig.add_trace(go.Scatter(x=plot_df['timestamp'], y=plot_df['ema_25'], mode='lines', name='25 EMA', line=dict(color='green', width=1.5)))
 
     if 'ema_50_low' in plot_df and st.session_state.show_ema_50:
-        ema50_data = plot_df[['time', 'ema_50_low']].rename(columns={'ema_50_low': 'value'}).dropna().to_dict('records')
-        seriesCandlestickChart.append({
-            "type": 'Line',
-            "data": ema50_data,
-            "options": {"color": 'blue', "lineWidth": 1.5, "title": "50 EMA Low"}
-        })
+        fig.add_trace(go.Scatter(x=plot_df['timestamp'], y=plot_df['ema_50_low'], mode='lines', name='50 EMA Low', line=dict(color='blue', width=1.5)))
 
     if 'ema_250' in plot_df and st.session_state.show_ema_250:
-        ema250_data = plot_df[['time', 'ema_250']].rename(columns={'ema_250': 'value'}).dropna().to_dict('records')
-        seriesCandlestickChart.append({
-            "type": 'Line',
-            "data": ema250_data,
-            "options": {"color": 'orange', "lineWidth": 2, "title": "250 EMA"}
-        })
+        fig.add_trace(go.Scatter(x=plot_df['timestamp'], y=plot_df['ema_250'], mode='lines', name='250 EMA', line=dict(color='orange', width=2)))
 
     if 'vwap' in plot_df and st.session_state.show_vwap:
-        vwap_data = plot_df[['time', 'vwap']].rename(columns={'vwap': 'value'}).dropna().to_dict('records')
-        seriesCandlestickChart.append({
-            "type": 'Line',
-            "data": vwap_data,
-            "options": {"color": 'darkred', "lineWidth": 1.5, "title": "VWAP"}
-        })
+        fig.add_trace(go.Scatter(x=plot_df['timestamp'], y=plot_df['vwap'], mode='lines', name='VWAP', line=dict(color='darkred', width=1.5)))
 
     # Markers for crossovers
     if 'ema_9' in plot_df:
-        markers = []
-        # Calculate exactly based on last fully closed candle logic
-        # Buy: prev_close <= prev_ema9 AND current_close > current_ema9
-        # Sell: prev_close >= prev_ema9 AND current_close < current_ema9
+        buy_times, buy_prices = [], []
+        sell_times, sell_prices = [], []
 
         for i in range(1, len(plot_df)):
             prev_row = plot_df.iloc[i-1]
@@ -374,31 +309,36 @@ def render_chart(df, script_name='Options Algo Chart', timeframe='1 Min'):
             is_sell = prev_row['close'] >= prev_row['ema_9'] and curr_row['close'] < curr_row['ema_9']
 
             if is_buy:
-                markers.append({
-                    "time": int(curr_row['time']),
-                    "position": "belowBar",
-                    "color": "green",
-                    "shape": "arrowUp",
-                    "text": "Buy"
-                })
+                buy_times.append(curr_row['timestamp'])
+                buy_prices.append(curr_row['low'] - (curr_row['high'] - curr_row['low']) * 0.1) # below bar
             elif is_sell:
-                markers.append({
-                    "time": int(curr_row['time']),
-                    "position": "aboveBar",
-                    "color": "red",
-                    "shape": "arrowDown",
-                    "text": "Sell"
-                })
+                sell_times.append(curr_row['timestamp'])
+                sell_prices.append(curr_row['high'] + (curr_row['high'] - curr_row['low']) * 0.1) # above bar
 
-        if markers:
-            seriesCandlestickChart[0]["markers"] = markers
+        if buy_times:
+            fig.add_trace(go.Scatter(
+                x=buy_times, y=buy_prices, mode='markers', name='Buy Signal',
+                marker=dict(symbol='triangle-up', size=10, color='green')
+            ))
 
-    return [
-        {
-            "chart": chartOptions,
-            "series": seriesCandlestickChart
-        }
-    ]
+        if sell_times:
+            fig.add_trace(go.Scatter(
+                x=sell_times, y=sell_prices, mode='markers', name='Sell Signal',
+                marker=dict(symbol='triangle-down', size=10, color='red')
+            ))
+
+    fig.update_layout(
+        title=script_name,
+        xaxis_title="Time",
+        yaxis_title="Price",
+        xaxis_rangeslider_visible=False,
+        margin=dict(l=0, r=0, t=30, b=0),
+        height=500,
+        plot_bgcolor='white',
+        paper_bgcolor='white'
+    )
+
+    return fig
 
 
 
@@ -519,12 +459,9 @@ def run_trading_loop(selected_option):
                 with c_leg[5]:
                     st.session_state.show_vwap = st.checkbox("VWAP", value=st.session_state.show_vwap)
 
-                chart_options = render_chart(df, strat.symbol, chart_interval)
-                if chart_options:
-                    # To prevent full DOM recreation, render the chart directly with a static key.
-                    # Creating a new st.empty() inside the fragment loop actually causes the container
-                    # to be recreated every 5 seconds, triggering the flash. We must remove st.empty().
-                    renderLightweightCharts(chart_options, key="live_trading_chart")
+                fig = render_chart(df, strat.symbol, chart_interval)
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True, key="live_trading_chart")
             else:
                 st.warning(f"Waiting for candlestick data... (API returned empty data for token {strat.token})")
 
