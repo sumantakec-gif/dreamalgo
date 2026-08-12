@@ -478,8 +478,8 @@ if st.session_state.show_settings:
 
 
 @st.fragment(run_every=5)
-def opt = selected_option if "selected_option" in locals() else None
-    run_trading_loop(opt):
+def run_trading_loop(selected_option):
+
     # If running, use the running strategy. If not, create a temporary one just for viewing!
     strat = st.session_state.strategy
     is_view_only = False
