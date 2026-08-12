@@ -478,7 +478,8 @@ if st.session_state.show_settings:
 
 
 @st.fragment(run_every=5)
-def run_trading_loop(selected_option):
+def opt = selected_option if "selected_option" in locals() else None
+    run_trading_loop(opt):
     # If running, use the running strategy. If not, create a temporary one just for viewing!
     strat = st.session_state.strategy
     is_view_only = False
@@ -570,7 +571,8 @@ def run_trading_loop(selected_option):
         st.info("Please login and select an index to view live charts.")
 
 if menu_selection != 'Broker':
-    run_trading_loop(selected_option)
+    opt = selected_option if "selected_option" in locals() else None
+    run_trading_loop(opt)
 else:
     render_broker_connection()
 
